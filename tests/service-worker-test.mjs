@@ -1,0 +1,72 @@
+#!/usr/bin/env node
+
+import { readFile } from "node:fs/promises";
+import vm from "node:vm";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+let messageListener;
+let nativeConnections = 0;
+
+const chrome = {
+  runtime: {
+    id: "jlikakgdldiihhflkobhnpfegjlcakdd",
+    getURL: (path) => `chrome-extension://jlikakgdldiihhflkobhnpfegjlcakdd${path}`,
+    connectNative: () => {
+      nativeConnections += 1;
+      return {
+        onMessage: { addListener: () => {} },
+        onDisconnect: { addListener: () => {} },
+        postMessage: () => {},
+      };
+    },
+    onMessage: {
+      addListener: (listener) => {
+        messageListener = listener;
+      },
+    },
+  },
+};
+
+const source = await readFile(resolve(repoRoot, "extension/service-worker.js"), "utf8");
+vm.runInNewContext(source, { chrome, URL, Error, Map, Set, Promise, setTimeout, clearTimeout });
+
+function request(type, sender) {
+  let response;
+  const asynchronous = messageListener(
+    { channel: "meeting-copilot", type: "native-request", request: { type, payload: {} } },
+    sender,
+    (value) => {
+      response = value;
+    },
+  );
+  return { asynchronous, response };
+}
+
+const foreign = request("status.get", {
+  id: "another-extension",
+  url: "https://meet.google.com/abc-defg-hij",
+});
+const privilegedFromMeet = request("setup.audio.configure", {
+  id: chrome.runtime.id,
+  url: "https://meet.google.com/abc-defg-hij",
+});
+const invalidMeetPath = request("status.get", {
+  id: chrome.runtime.id,
+  url: "https://meet.google.com/landing",
+});
+
+if (
+  foreign.asynchronous !== false ||
+  foreign.response?.ok !== false ||
+  privilegedFromMeet.asynchronous !== false ||
+  privilegedFromMeet.response?.ok !== false ||
+  invalidMeetPath.asynchronous !== false ||
+  invalidMeetPath.response?.ok !== false ||
+  nativeConnections !== 0
+) {
+  throw new Error("Service worker accepted an unauthorized Native Host request.");
+}
+
+process.stdout.write("Service worker sender authorization passed.\n");

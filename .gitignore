@@ -1,0 +1,4 @@
+.DS_Store
+.meeting-copilot.env
+node_modules/
+.meeting-copilot-runtime/

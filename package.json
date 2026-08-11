@@ -1,0 +1,35 @@
+{
+  "name": "meeting-copilot",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Local macOS bridge between ChatGPT Voice and web meetings",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bb8ad8/meeting-copilot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bb8ad8/meeting-copilot/issues"
+  },
+  "homepage": "https://github.com/bb8ad8/meeting-copilot#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "darwin"
+  ],
+  "keywords": [
+    "chatgpt",
+    "google-meet",
+    "voice",
+    "macos",
+    "chrome-extension"
+  ],
+  "type": "module",
+  "scripts": {
+    "test": "./tests/scripts-test.sh"
+  },
+  "dependencies": {
+    "playwright-core": "1.62.1"
+  }
+}
