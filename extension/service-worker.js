@@ -76,7 +76,7 @@ function requestHost(request) {
     const timeoutMs = request.type === "voice.restart"
       ? 150_000
       : request.type === "session.stop"
-        ? 45_000
+        ? 60_000
         : 20_000;
     const timeout = setTimeout(() => {
       pending.delete(id);

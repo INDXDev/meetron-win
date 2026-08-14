@@ -303,6 +303,17 @@ async function stopVoice() {
     return { stopped: false, alreadyStopped: true };
   }
 
+  const rateLimitDialog = page.locator('[data-testid="modal-conversation-history-rate-limit"]');
+  if (await locatorIsVisible(rateLimitDialog)) {
+    const acknowledge = rateLimitDialog.getByRole("button", {
+      name: /^(了解|OK|Got it)$/i,
+    });
+    if (await locatorIsVisible(acknowledge)) {
+      await acknowledge.first().click({ force: true, timeout: 5_000 });
+      await rateLimitDialog.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
+    }
+  }
+
   const endVoice = page.getByRole("button", {
     name: /^(音声を終了する|End voice)$/i,
   });
@@ -310,8 +321,11 @@ async function stopVoice() {
     return { stopped: false, alreadyStopped: true };
   }
 
-  await endVoice.first().click();
+  await endVoice.first().click({ force: true, timeout: 5_000 });
   await endVoice.first().waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {});
+  if (await locatorIsVisible(endVoice)) {
+    throw new Error("ChatGPT Voiceの終了状態を確認できませんでした");
+  }
   return { stopped: true, alreadyStopped: false };
 }
 

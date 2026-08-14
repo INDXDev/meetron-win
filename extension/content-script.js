@@ -351,8 +351,12 @@
     elements.restart.disabled = true;
     elements.stop.disabled = true;
     try {
-      await nativeRequest(type);
-      setMessage(successMessage);
+      const result = await nativeRequest(type);
+      if (result?.warnings?.length) {
+        setMessage(`${successMessage}: ${result.warnings.join(" / ")}`, true);
+      } else {
+        setMessage(successMessage);
+      }
       await refreshStatus({ quiet: true });
     } catch (error) {
       setMessage(error.message, true);
