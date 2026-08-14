@@ -79,7 +79,10 @@ if [ ! -d "$repo_root/node_modules/playwright-core" ]; then
   exit 1
 fi
 
-node_binary="$(command -v node || true)"
+node_binary="${MEETING_COPILOT_NODE_PATH:-}"
+if [ -z "$node_binary" ] || [ ! -x "$node_binary" ]; then
+  node_binary="$(command -v node || true)"
+fi
 if [ -z "$node_binary" ] || [ ! -x "$node_binary" ]; then
   printf 'Node.js executable was not found. Install Node.js and run this installer again.\n' >&2
   exit 1

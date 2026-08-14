@@ -66,9 +66,19 @@ function configuredPort(name, fallback) {
 }
 
 function commandEnvironment() {
+  const nodePath = configuredValue("MEETING_COPILOT_NODE_PATH");
+  const commandPaths = [
+    nodePath ? dirname(nodePath) : "",
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    process.env.PATH || "",
+  ].filter(Boolean);
   return {
     ...process.env,
-    PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
+    PATH: commandPaths.join(":"),
+    MEETING_COPILOT_NODE_PATH: nodePath,
     MEETING_COPILOT_CDP_PORT: configuredPort("MEETING_COPILOT_CDP_PORT", "9223"),
   };
 }

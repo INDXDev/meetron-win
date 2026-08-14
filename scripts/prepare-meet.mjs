@@ -250,7 +250,8 @@ if (options.join) {
     try {
       await joinButton.first().waitFor({ state: "visible", timeout: 10_000 });
       await page.waitForTimeout(options.joinDelay * 1_000);
-      await joinButton.first().click({ timeout: 5_000 });
+      // The controller panel can overlap Meet's lower-right join button.
+      await joinButton.first().click({ timeout: 5_000, force: true });
 
       await page
         .waitForFunction(

@@ -123,7 +123,13 @@ try {
 } finally {
   await browser?.close().catch(() => {});
   chrome.kill();
-  await rm(profileDir, { recursive: true, force: true });
+  if (chrome.exitCode === null) {
+    await Promise.race([
+      new Promise((resolveExit) => chrome.once("exit", resolveExit)),
+      new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000)),
+    ]);
+  }
+  await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 process.stdout.write("Unified profile preserves Meet while replacing the ChatGPT Voice tab.\n");

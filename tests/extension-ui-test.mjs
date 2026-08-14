@@ -248,7 +248,7 @@ const popupResult = await popup.evaluate(() => ({
 }));
 if (
   popupResult.request?.payload?.meetingUrl !== "https://meet.google.com/abc-defg-hij" ||
-  popupResult.launch !== "起動準備中"
+  popupResult.launch !== "起動完了"
 ) {
   throw new Error(`Popup start did not submit the Meet URL: ${JSON.stringify(popupResult)}`);
 }

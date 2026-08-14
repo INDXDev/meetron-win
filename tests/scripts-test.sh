@@ -163,7 +163,9 @@ else
   pass 'extension panel and popup UI browser test (skipped: Chrome not installed)'
 fi
 
-native_manifest_output="$(MEETING_COPILOT_PROFILE_DIR="$temp_dir/dedicated-profile" \
+native_manifest_output="$(PATH=/usr/bin:/bin \
+  MEETING_COPILOT_NODE_PATH="$node_binary" \
+  MEETING_COPILOT_PROFILE_DIR="$temp_dir/dedicated-profile" \
   "$repo_root/scripts/install-control-ui.sh" --dry-run)"
 if printf '%s\n' "$native_manifest_output" | grep -F -- 'chrome-extension://jlikakgdldiihhflkobhnpfegjlcakdd/' >/dev/null &&
   printf '%s\n' "$native_manifest_output" | grep -F -- 'com.meeting_copilot.host' >/dev/null &&

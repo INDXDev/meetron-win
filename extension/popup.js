@@ -91,6 +91,21 @@ function renderLaunch(state) {
   launchStatus.textContent = labels[state.status] || state.status;
 }
 
+async function waitForLaunchCompletion(timeout = 150_000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const status = await nativeRequest("status.get");
+    const state = status.meetingLaunch;
+    renderLaunch(state);
+    if (state?.status === "completed") return state;
+    if (state?.status === "failed") {
+      throw new Error(state.error || "起動処理に失敗しました");
+    }
+    await new Promise((resolveDelay) => window.setTimeout(resolveDelay, 1_000));
+  }
+  throw new Error("起動処理が続いています。しばらくしてから状態を再確認してください");
+}
+
 function setCheck(indicator, label, ready, readyText = "完了", missingText = "未完了") {
   indicator.className = `check-indicator ${ready ? "good" : "bad"}`;
   label.textContent = ready ? readyText : missingText;
@@ -272,7 +287,9 @@ startForm.addEventListener("submit", async (event) => {
     const result = await nativeRequest("meeting.start", { meetingUrl });
     await chrome.storage.local.set({ lastMeetingUrl: meetingUrl });
     renderLaunch(result);
-    setMessage("開始しました。専用ChromeがMeetを開きます", "success");
+    setMessage("起動処理中です。専用Chromeを準備しています");
+    await waitForLaunchCompletion();
+    setMessage("開始しました。専用ChromeがMeetを開きました", "success");
   } catch (error) {
     setMessage(error.message, "error");
   } finally {
