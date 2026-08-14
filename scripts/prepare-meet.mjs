@@ -2,6 +2,8 @@
 
 import { chromium } from "playwright-core";
 
+const CONTROLLER_EXTENSION_ID = "jlikakgdldiihhflkobhnpfegjlcakdd";
+
 const args = process.argv.slice(2);
 const options = {
   cdp: "http://127.0.0.1:9223",
@@ -65,6 +67,13 @@ const context = contexts[0];
 await context.grantPermissions(["microphone"], {
   origin: "https://meet.google.com",
 });
+
+const controllerWorker = context
+  .serviceWorkers()
+  .find((worker) => worker.url().startsWith(`chrome-extension://${CONTROLLER_EXTENSION_ID}/`));
+if (controllerWorker) {
+  await controllerWorker.evaluate(() => chrome.storage.local.set({ controlsCollapsed: true }));
+}
 
 const meetPages = context
   .pages()
@@ -189,10 +198,10 @@ async function locatorIsVisible(locator) {
 }
 
 const turnMicrophoneOn = page.getByRole("button", {
-  name: /マイクをオンにする|turn on microphone|unmute microphone/i,
+  name: /マイクをオン(?:にする)?|turn on microphone|unmute microphone/i,
 });
 const turnMicrophoneOff = page.getByRole("button", {
-  name: /マイクをオフにする|マイクをミュート|turn off microphone|mute microphone/i,
+  name: /マイクをオフ(?:にする)?|マイクをミュート|turn off microphone|mute microphone/i,
 });
 let microphoneState = await visibleControlState({ on: turnMicrophoneOn, off: turnMicrophoneOff });
 if (microphoneState === "on") {
@@ -205,10 +214,10 @@ if (microphoneState !== "off") {
 }
 
 const turnCameraOn = page.getByRole("button", {
-  name: /カメラをオンにする|turn on camera/i,
+  name: /カメラをオン(?:にする)?|turn on camera/i,
 });
 const turnCameraOff = page.getByRole("button", {
-  name: /カメラをオフにする|turn off camera/i,
+  name: /カメラをオフ(?:にする)?|turn off camera/i,
 });
 let cameraState = await visibleControlState({ on: turnCameraOn, off: turnCameraOff });
 if (cameraState === "on") {

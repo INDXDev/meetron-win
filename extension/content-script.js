@@ -397,11 +397,16 @@
     }
   });
 
-  onTrustedClick(elements.expand, async () => {
-    const collapsed = !elements.panel.classList.contains("collapsed");
+  function setCollapsed(collapsed) {
     elements.panel.classList.toggle("collapsed", collapsed);
     elements.expand.innerHTML = icon(collapsed ? "chevronUp" : "chevronDown");
     elements.expand.title = collapsed ? "パネルを開く" : "パネルを折りたたむ";
+    elements.expand.setAttribute("aria-label", elements.expand.title);
+  }
+
+  onTrustedClick(elements.expand, async () => {
+    const collapsed = !elements.panel.classList.contains("collapsed");
+    setCollapsed(collapsed);
     await chrome.storage.local.set({ controlsCollapsed: collapsed });
   });
 
@@ -440,14 +445,19 @@
 
   chrome.storage.local.get(["controlsCollapsed", "controlsPosition"]).then((stored) => {
     if (stored.controlsCollapsed) {
-      elements.panel.classList.add("collapsed");
-      elements.expand.innerHTML = icon("chevronUp");
+      setCollapsed(true);
     }
     if (stored.controlsPosition?.left && stored.controlsPosition?.top) {
       host.style.left = stored.controlsPosition.left;
       host.style.top = stored.controlsPosition.top;
       host.style.right = "auto";
       host.style.bottom = "auto";
+    }
+  });
+
+  chrome.storage.onChanged?.addListener((changes, areaName) => {
+    if (areaName === "local" && changes.controlsCollapsed) {
+      setCollapsed(changes.controlsCollapsed.newValue === true);
     }
   });
 
