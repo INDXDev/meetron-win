@@ -52,6 +52,24 @@ else
   fail 'uninstaller help'
 fi
 
+uninstall_repo="$temp_dir/uninstall-repo"
+uninstall_home="$temp_dir/uninstall-home"
+uninstall_runtime="$uninstall_repo/.meeting-copilot-runtime"
+mkdir -p "$uninstall_repo/scripts" "$uninstall_home" "$uninstall_runtime"
+cp "$repo_root/scripts/uninstall.sh" \
+  "$repo_root/scripts/restore-audio.sh" \
+  "$repo_root/scripts/install-control-ui.sh" \
+  "$uninstall_repo/scripts/"
+printf '{invalid recovery state\n' > "$uninstall_runtime/audio-original.json"
+if HOME="$uninstall_home" MEETING_COPILOT_RUNTIME_DIR="$uninstall_runtime" \
+  "$uninstall_repo/scripts/uninstall.sh" --remove-data --yes >/dev/null 2>&1; then
+  fail 'uninstaller stops when audio restoration fails'
+elif [ -f "$uninstall_runtime/audio-original.json" ]; then
+  pass 'uninstaller preserves recovery data when audio restoration fails'
+else
+  fail 'uninstaller preserves failed audio recovery state'
+fi
+
 if "$repo_root/scripts/install-audio-deps.sh" --dry-run --yes --accept-blackhole-license >/dev/null; then
   pass 'audio installer dry run'
 else

@@ -42,13 +42,21 @@ if [ "$remove_data" -eq 1 ] && [ "$confirmed" -ne 1 ]; then
 fi
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-"$repo_root/scripts/restore-audio.sh" >/dev/null 2>&1 || true
+runtime_dir="${MEETING_COPILOT_RUNTIME_DIR:-$repo_root/.meeting-copilot-runtime}"
+audio_state_path="$runtime_dir/audio-original.json"
+if [ -f "$audio_state_path" ]; then
+  if ! restore_output="$("$repo_root/scripts/restore-audio.sh" 2>&1)"; then
+    printf 'Audio restoration failed. Uninstall was stopped and recovery data was preserved.\n' >&2
+    printf '%s\n' "$restore_output" >&2
+    exit 1
+  fi
+fi
 "$repo_root/scripts/install-control-ui.sh" --uninstall --quiet
 
 if [ "$remove_data" -eq 1 ]; then
   shared_profile="${MEETING_COPILOT_PROFILE_DIR:-$HOME/Library/Application Support/MeetingCopilot/GPTParticipantChrome}"
   legacy_chatgpt_profile="$HOME/Library/Application Support/MeetingCopilot/ChatGPTVoiceChrome"
-  rm -rf -- "$repo_root/.meeting-copilot-runtime" "$shared_profile" "$legacy_chatgpt_profile"
+  rm -rf -- "$runtime_dir" "$shared_profile" "$legacy_chatgpt_profile"
   rm -f -- "$repo_root/.meeting-copilot.env"
   printf 'Removed Meeting Copilot local data and dedicated Chrome profiles.\n'
 fi

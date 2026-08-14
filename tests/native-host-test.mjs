@@ -43,7 +43,9 @@ function frame(message) {
   return Buffer.concat([header, request]);
 }
 
-child.stdin.write(Buffer.concat([
+// Chrome may close the port immediately after sending. The host must drain every
+// accepted request before it exits so cleanup commands are not interrupted.
+child.stdin.end(Buffer.concat([
   frame({ id: "test-ping", type: "ping" }),
   frame({ id: "test-invalid-url", type: "meeting.start", payload: { meetingUrl: "https://example.com/not-meet" } }),
   frame({ id: "test-invalid-project", type: "setup.project.save", payload: { projectUrl: "https://example.com/project" } }),

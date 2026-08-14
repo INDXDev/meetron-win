@@ -849,5 +849,10 @@ process.stdin.on("data", (chunk) => {
   }
 });
 
-process.stdin.on("end", () => process.exit(0));
+process.stdin.on("end", () => {
+  queue.catch((error) => {
+    process.stderr.write(`Native Host request queue failed: ${error.message}\n`);
+    process.exitCode = 1;
+  });
+});
 process.stdin.resume();
