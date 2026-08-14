@@ -15,11 +15,21 @@ const projectInput = document.querySelector("#project-url");
 const previousButton = document.querySelector("[data-previous-step]");
 const nextButton = document.querySelector("[data-next-step]");
 const setupNav = document.querySelector(".setup-nav");
+const bootstrapCommand = document.querySelector("[data-bootstrap-command]");
+
+const extensionId = chrome.runtime.id || "jlikakgdldiihhflkobhnpfegjlcakdd";
+const automaticBootstrapCommand =
+  `EXTENSION_DIR="$(for p in "$HOME/Library/Application Support/Google/Chrome"/*/"Secure Preferences"; do /usr/bin/plutil -extract extensions.settings.${extensionId}.path raw "$p" 2>/dev/null && break; done)" && REPO_DIR="$(dirname "$EXTENSION_DIR")" && cd "$REPO_DIR" && npm install && ./scripts/open-control-ui-setup.sh`;
+bootstrapCommand.textContent = automaticBootstrapCommand;
 
 let setupStatus = null;
 let setupStep = 0;
 let forceSetup = false;
 let setupBusy = false;
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'\\''`)}'`;
+}
 
 function normalizeMeetingUrl(value) {
   let url;
@@ -152,8 +162,10 @@ function renderSetup() {
   const bootstrap = document.querySelector("[data-bootstrap]");
   bootstrap.hidden = connected;
   if (connected && setupStatus.repoRoot) {
-    document.querySelector("[data-bootstrap-command]").textContent =
-      `cd ${setupStatus.repoRoot} && npm install && ./scripts/open-control-ui-setup.sh`;
+    bootstrapCommand.textContent =
+      `cd ${shellQuote(setupStatus.repoRoot)} && npm install && ./scripts/open-control-ui-setup.sh`;
+  } else {
+    bootstrapCommand.textContent = automaticBootstrapCommand;
   }
 
   const requiredDevices = setupStatus?.audio?.requiredDevices || {};
@@ -335,7 +347,7 @@ document.querySelectorAll("[data-refresh-setup]").forEach((button) => {
 document.querySelector("[data-copy-bootstrap]").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(
-      document.querySelector("[data-bootstrap-command]").textContent,
+      bootstrapCommand.textContent,
     );
     setSetupMessage("コマンドをコピーしました", "success");
   } catch {

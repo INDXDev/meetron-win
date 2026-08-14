@@ -47,6 +47,8 @@ Chrome 137以降の公式ビルドでは`--load-extension`が削除されてい�
 3. 共通の専用Chrome、拡張読込、Googleログイン
 4. 同じ専用ChromeでのChatGPT Project URLとログイン
 
+Native Messaging Hostが未接続の場合、ポップアップはChrome設定からこの拡張の読み込み元を検出するコマンドを表示します。ユーザー名やリポジトリの配置場所を手入力する必要はありません。
+
 音声デバイス、Project URL、専用Chromeの拡張読込は自動判定します。ChatGPTとGoogleのログインは外部状態を保存しないため、同じ専用Chromeで確認後に利用者がチェックします。完了後もMeet URL入力画面右上の設定ボタンから再度開けます。
 
 ## 利用方法

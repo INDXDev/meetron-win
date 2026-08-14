@@ -14,6 +14,7 @@ await context.addInitScript(() => {
   globalThis.__nativeRequests = [];
   globalThis.chrome = {
     runtime: {
+      id: "jlikakgdldiihhflkobhnpfegjlcakdd",
       sendMessage: async ({ request }) => {
         globalThis.__nativeRequests.push(request);
         if (request.type === "diagnostics.run") {
@@ -29,6 +30,9 @@ await context.addInitScript(() => {
           return { ok: true, data: { status: "ok", after: "unmuted", verified: true } };
         }
         if (request.type === "setup.status") {
+          if (globalThis.__hostDisconnected) {
+            return { ok: false, error: "Specified native messaging host not found." };
+          }
           if (globalThis.__unifiedSetupIncomplete) {
             return {
               ok: true,
@@ -299,5 +303,28 @@ if (
   throw new Error(`Unified profile setup step is incomplete: ${JSON.stringify(unifiedSetupResult)}`);
 }
 await unifiedSetupPopup.screenshot({ path: "/tmp/meeting-copilot-unified-setup-ui.png" });
+
+const disconnectedPopup = await context.newPage();
+await disconnectedPopup.setContent(popupHtml);
+await disconnectedPopup.addStyleTag({ content: await readFile(resolve(repoRoot, "extension/popup.css"), "utf8") });
+await disconnectedPopup.evaluate(() => { globalThis.__hostDisconnected = true; });
+await disconnectedPopup.evaluate(await readFile(resolve(repoRoot, "extension/popup.js"), "utf8"));
+await disconnectedPopup.waitForFunction(() =>
+  document.querySelector("[data-host-status]")?.textContent === "ローカルホスト未接続",
+);
+const disconnectedResult = await disconnectedPopup.evaluate(() => ({
+  command: document.querySelector("[data-bootstrap-command]").textContent,
+  bootstrapHidden: document.querySelector("[data-bootstrap]").hidden,
+}));
+if (
+  disconnectedResult.bootstrapHidden ||
+  disconnectedResult.command.includes("/path/to/") ||
+  !disconnectedResult.command.includes("Secure Preferences") ||
+  !disconnectedResult.command.includes("jlikakgdldiihhflkobhnpfegjlcakdd") ||
+  !disconnectedResult.command.includes('cd "$REPO_DIR"')
+) {
+  throw new Error(`Disconnected setup did not provide an automatic install path: ${JSON.stringify(disconnectedResult)}`);
+}
+await disconnectedPopup.screenshot({ path: "/tmp/meeting-copilot-disconnected-setup-ui.png" });
 await browser.close();
 process.stdout.write("Extension panel, launcher, and setup wizard UI tests passed.\n");
