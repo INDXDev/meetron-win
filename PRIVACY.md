@@ -8,7 +8,7 @@ The project may store the following data on the Mac:
 
 - `.meeting-copilot.env`: ChatGPT Project URL and local automation ports
 - `.meeting-copilot-runtime/`: launch status, recent microphone state, setup confirmations, saved audio-device names, and bounded diagnostic logs
-- Dedicated Chrome profiles under `~/Library/Application Support/MeetingCopilot/`: ChatGPT and Google sessions, cookies, permissions, and extension state
+- Shared dedicated Chrome profile at `~/Library/Application Support/MeetingCopilot/GPTParticipantChrome/`: ChatGPT and Google sessions, cookies, permissions, and extension state
 - Chrome extension local storage: the last entered Meet URL and panel layout preferences
 
 These paths are excluded from Git. Meeting Copilot does not intentionally record or transcribe meeting audio, and it does not send local runtime files to this repository's maintainers.
@@ -30,4 +30,4 @@ Remove the extension from both Chrome profiles, then run:
 ./scripts/uninstall.sh --remove-data --yes
 ```
 
-This deletes the Native Messaging registration, local configuration and runtime files, and both dedicated Chrome profiles. It does not delete server-side ChatGPT chats, Google account data, Homebrew packages, or the repository checkout.
+This deletes the Native Messaging registration, local configuration and runtime files, the shared dedicated Chrome profile, and the legacy pre-0.6 ChatGPT profile if present. It does not delete server-side ChatGPT chats, Google account data, Homebrew packages, or the repository checkout.

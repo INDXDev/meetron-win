@@ -4,10 +4,11 @@ set -eu
 
 dry_run=0
 restart_profile=0
+replace_tab=0
 project_url=''
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 environment_project_url="${MEETING_COPILOT_CHATGPT_PROJECT_URL:-}"
-environment_cdp_port="${MEETING_COPILOT_CHATGPT_CDP_PORT:-}"
+environment_cdp_port="${MEETING_COPILOT_CDP_PORT:-}"
 
 if [ -f "$repo_root/.meeting-copilot.env" ]; then
   # shellcheck disable=SC1091
@@ -18,29 +19,30 @@ if [ -n "$environment_project_url" ]; then
   MEETING_COPILOT_CHATGPT_PROJECT_URL="$environment_project_url"
 fi
 if [ -n "$environment_cdp_port" ]; then
-  MEETING_COPILOT_CHATGPT_CDP_PORT="$environment_cdp_port"
+  MEETING_COPILOT_CDP_PORT="$environment_cdp_port"
 fi
 
 usage() {
   cat <<'EOF'
 Usage: ./scripts/open-chatgpt-live.sh [options]
 
-Opens a new voice chat in a ChatGPT Project using a dedicated Chrome profile.
+Opens a new voice chat in the shared Meeting Copilot Chrome profile.
 
 Environment variables:
   MEETING_COPILOT_CHATGPT_PROJECT_URL   ChatGPT Project landing URL.
-  MEETING_COPILOT_CHATGPT_PROFILE_DIR   Dedicated Chrome user data directory.
-  MEETING_COPILOT_CHATGPT_CDP_PORT      Local automation port (default: 9224).
+  MEETING_COPILOT_PROFILE_DIR           Shared dedicated user data directory.
+  MEETING_COPILOT_CDP_PORT              Shared local automation port (default: 9223).
   MEETING_COPILOT_CHROME_PATH           Override the Google Chrome .app path.
 
 Options:
   --project-url URL    Override the configured ChatGPT Project URL.
-  --restart-profile   Restart the dedicated ChatGPT Chrome profile.
+  --restart-profile   Restart the whole shared profile before initial launch.
+  --replace-tab       Replace only ChatGPT tabs and preserve an active Meet.
   --dry-run           Print the launch command without opening Chrome.
   -h, --help          Show this help.
 
-The first run leaves the dedicated browser open for ChatGPT sign-in. Sign in
-once, close or restart that profile, and run this command again.
+The first run leaves the shared browser open for ChatGPT sign-in. Sign in once
+and run this command again. Use --replace-tab for an in-meeting Voice restart.
 EOF
 }
 
@@ -52,6 +54,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --restart-profile)
       restart_profile=1
+      ;;
+    --replace-tab)
+      replace_tab=1
       ;;
     --dry-run)
       dry_run=1
@@ -110,8 +115,8 @@ if [ ! -x "$chrome_binary" ]; then
   exit 1
 fi
 
-profile_dir="${MEETING_COPILOT_CHATGPT_PROFILE_DIR:-$HOME/Library/Application Support/MeetingCopilot/ChatGPTVoiceChrome}"
-cdp_port="${MEETING_COPILOT_CHATGPT_CDP_PORT:-9224}"
+profile_dir="${MEETING_COPILOT_PROFILE_DIR:-$HOME/Library/Application Support/MeetingCopilot/GPTParticipantChrome}"
+cdp_port="${MEETING_COPILOT_CDP_PORT:-9223}"
 
 if [ "$dry_run" -eq 1 ]; then
   printf '[DRY RUN] open -na %q --args --remote-debugging-address=127.0.0.1 --remote-debugging-port=%q --use-fake-ui-for-media-stream --user-data-dir=%q --no-first-run --new-window %q\n' \
@@ -126,40 +131,62 @@ fi
 
 mkdir -p "$profile_dir"
 
-find_profile_pids() {
-  ps -axo pid=,command= | awk -v profile="--user-data-dir=$profile_dir" '
+find_profile_pids_for() {
+  target_profile="$1"
+  ps -axo pid=,command= | awk -v profile="--user-data-dir=$target_profile" '
     index($0, profile) && $0 ~ /Contents\/MacOS\// && $0 !~ /Helper/ { print $1 }
   '
 }
 
-profile_pids="$(find_profile_pids)"
-if [ -n "$profile_pids" ]; then
-  if [ "$restart_profile" -ne 1 ]; then
-    printf 'The dedicated ChatGPT Chrome profile is already running.\n' >&2
-    printf 'Close it or pass --restart-profile.\n' >&2
-    exit 1
+find_profile_pids() {
+  find_profile_pids_for "$profile_dir"
+}
+
+legacy_profile_dir="$HOME/Library/Application Support/MeetingCopilot/ChatGPTVoiceChrome"
+if [ "$legacy_profile_dir" != "$profile_dir" ]; then
+  legacy_profile_pids="$(find_profile_pids_for "$legacy_profile_dir")"
+  if [ -n "$legacy_profile_pids" ]; then
+    printf '[INFO] Closing the retired pre-0.6 ChatGPT Chrome profile.\n'
+    for profile_pid in $legacy_profile_pids; do
+      kill "$profile_pid" 2>/dev/null || true
+    done
   fi
-
-  printf '[INFO] Restarting dedicated ChatGPT Chrome profile.\n'
-  for profile_pid in $profile_pids; do
-    kill "$profile_pid" 2>/dev/null || true
-  done
-
-  attempts=0
-  while [ -n "$(find_profile_pids)" ] && [ "$attempts" -lt 20 ]; do
-    sleep 0.25
-    attempts=$((attempts + 1))
-  done
 fi
 
-open -na "$chrome_path" --args \
-  --remote-debugging-address=127.0.0.1 \
-  "--remote-debugging-port=$cdp_port" \
-  --use-fake-ui-for-media-stream \
-  "--user-data-dir=$profile_dir" \
-  --no-first-run \
-  --new-window \
-  "$project_url"
+launch_chrome=1
+profile_pids="$(find_profile_pids)"
+if [ -n "$profile_pids" ]; then
+  if [ "$restart_profile" -eq 1 ]; then
+    printf '[INFO] Restarting shared Meeting Copilot Chrome profile.\n'
+    for profile_pid in $profile_pids; do
+      kill "$profile_pid" 2>/dev/null || true
+    done
+
+    attempts=0
+    while [ -n "$(find_profile_pids)" ] && [ "$attempts" -lt 20 ]; do
+      sleep 0.25
+      attempts=$((attempts + 1))
+    done
+  elif curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; then
+    launch_chrome=0
+    printf '[INFO] Reusing shared Meeting Copilot Chrome profile.\n'
+  else
+    printf 'The shared Chrome profile is running without its automation endpoint.\n' >&2
+    printf 'Close it, then run the command again.\n' >&2
+    exit 1
+  fi
+fi
+
+if [ "$launch_chrome" -eq 1 ]; then
+  open -na "$chrome_path" --args \
+    --remote-debugging-address=127.0.0.1 \
+    "--remote-debugging-port=$cdp_port" \
+    --use-fake-ui-for-media-stream \
+    "--user-data-dir=$profile_dir" \
+    --no-first-run \
+    --new-window \
+    "$project_url"
+fi
 
 attempts=0
 while ! curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; do
@@ -171,10 +198,16 @@ while ! curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/nul
   sleep 0.25
 done
 
-set +e
-node "$repo_root/scripts/prepare-chatgpt-live.mjs" \
-  --cdp "http://127.0.0.1:$cdp_port" \
+prepare_args=(
+  --cdp "http://127.0.0.1:$cdp_port"
   --project-url "$project_url"
+)
+if [ "$replace_tab" -eq 1 ]; then
+  prepare_args+=(--replace-tab)
+fi
+
+set +e
+node "$repo_root/scripts/prepare-chatgpt-live.mjs" "${prepare_args[@]}"
 prepare_status=$?
 set -e
 

@@ -10,7 +10,7 @@ usage() {
 Usage: ./scripts/uninstall.sh [--remove-data --yes]
 
 Removes the Native Messaging Host registration. With --remove-data --yes, also
-removes local settings, runtime files, and the two dedicated Chrome profiles.
+removes local settings, runtime files, and the shared dedicated Chrome profile.
 The unpacked extension must still be removed manually from chrome://extensions.
 EOF
 }
@@ -46,11 +46,11 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 "$repo_root/scripts/install-control-ui.sh" --uninstall --quiet
 
 if [ "$remove_data" -eq 1 ]; then
-  meet_profile="${MEETING_COPILOT_PROFILE_DIR:-$HOME/Library/Application Support/MeetingCopilot/GPTParticipantChrome}"
-  chatgpt_profile="${MEETING_COPILOT_CHATGPT_PROFILE_DIR:-$HOME/Library/Application Support/MeetingCopilot/ChatGPTVoiceChrome}"
-  rm -rf -- "$repo_root/.meeting-copilot-runtime" "$meet_profile" "$chatgpt_profile"
+  shared_profile="${MEETING_COPILOT_PROFILE_DIR:-$HOME/Library/Application Support/MeetingCopilot/GPTParticipantChrome}"
+  legacy_chatgpt_profile="$HOME/Library/Application Support/MeetingCopilot/ChatGPTVoiceChrome"
+  rm -rf -- "$repo_root/.meeting-copilot-runtime" "$shared_profile" "$legacy_chatgpt_profile"
   rm -f -- "$repo_root/.meeting-copilot.env"
   printf 'Removed Meeting Copilot local data and dedicated Chrome profiles.\n'
 fi
 
-printf 'Remove Meeting Copilot Controls from both Chrome profiles in chrome://extensions.\n'
+printf 'Remove Meeting Copilot Controls from regular and shared dedicated Chrome in chrome://extensions.\n'

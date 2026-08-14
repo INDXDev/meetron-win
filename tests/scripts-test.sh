@@ -70,6 +70,12 @@ else
   fail 'ChatGPT Voice preparation help'
 fi
 
+if node "$repo_root/scripts/open-chrome-page.mjs" --help >/dev/null; then
+  pass 'shared Chrome page opener help'
+else
+  fail 'shared Chrome page opener help'
+fi
+
 if node "$repo_root/scripts/set-meet-mic.mjs" --help >/dev/null; then
   pass 'Meet microphone control help'
 else
@@ -95,12 +101,7 @@ else
   fail 'control UI installer help'
 fi
 
-for javascript in \
-  "$repo_root/extension/content-script.js" \
-  "$repo_root/extension/popup.js" \
-  "$repo_root/extension/service-worker.js" \
-  "$repo_root/scripts/meeting-start-job.mjs" \
-  "$repo_root/scripts/native-host.mjs"; do
+for javascript in "$repo_root"/extension/*.js "$repo_root"/scripts/*.mjs "$repo_root"/tests/*.mjs; do
   if node --check "$javascript"; then
     pass "JavaScript syntax: ${javascript##*/}"
   else
@@ -143,6 +144,11 @@ elif [ -x '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' ]; then
     pass 'extension panel and popup UI browser test'
   else
     fail 'extension UI browser test'
+  fi
+  if node "$repo_root/tests/unified-profile-test.mjs" >/dev/null; then
+    pass 'unified profile preserves Meet during Voice restart'
+  else
+    fail 'unified profile Voice restart isolation'
   fi
 else
   pass 'extension panel and popup UI browser test (skipped: Chrome not installed)'
@@ -199,10 +205,12 @@ else
 fi
 
 chatgpt_launcher_output="$(MEETING_COPILOT_CHROME_PATH="$fake_chrome" \
-  MEETING_COPILOT_CHATGPT_PROFILE_DIR="$temp_dir/chatgpt-profile" \
+  MEETING_COPILOT_PROFILE_DIR="$temp_dir/profile" \
+  MEETING_COPILOT_CDP_PORT=9223 \
   MEETING_COPILOT_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-test/project' \
   "$repo_root/scripts/open-chatgpt-live.sh" --restart-profile --dry-run)"
-if printf '%s\n' "$chatgpt_launcher_output" | grep -F -- '--remote-debugging-port=9224' >/dev/null &&
+if printf '%s\n' "$chatgpt_launcher_output" | grep -F -- '--remote-debugging-port=9223' >/dev/null &&
+  printf '%s\n' "$chatgpt_launcher_output" | grep -F -- "--user-data-dir=$temp_dir/profile" >/dev/null &&
   printf '%s\n' "$chatgpt_launcher_output" | grep -F -- 'https://chatgpt.com/g/g-p-test/project' >/dev/null; then
   pass 'ChatGPT Voice launcher dry run'
 else

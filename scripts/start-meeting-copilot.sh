@@ -12,7 +12,6 @@ meeting_url="$1"
 audio_configured=0
 launch_completed=0
 environment_meet_cdp_port="${MEETING_COPILOT_CDP_PORT:-}"
-environment_chatgpt_cdp_port="${MEETING_COPILOT_CHATGPT_CDP_PORT:-}"
 
 restore_audio_on_failure() {
   if [ "$audio_configured" -eq 1 ] && [ "$launch_completed" -ne 1 ]; then
@@ -31,16 +30,11 @@ if [ -n "$environment_meet_cdp_port" ]; then
   MEETING_COPILOT_CDP_PORT="$environment_meet_cdp_port"
   export MEETING_COPILOT_CDP_PORT
 fi
-if [ -n "$environment_chatgpt_cdp_port" ]; then
-  MEETING_COPILOT_CHATGPT_CDP_PORT="$environment_chatgpt_cdp_port"
-  export MEETING_COPILOT_CHATGPT_CDP_PORT
-fi
-
 "$repo_root/scripts/install-control-ui.sh" --quiet
 audio_configured=1
 "$repo_root/scripts/configure-audio.sh"
 "$repo_root/scripts/open-chatgpt-live.sh" --restart-profile
-"$repo_root/scripts/open-gpt-participant.sh" --join --restart-profile "$meeting_url"
+"$repo_root/scripts/open-gpt-participant.sh" --join "$meeting_url"
 "$repo_root/scripts/set-meet-mic.sh" --assume-before muted --wait 60 unmute
 launch_completed=1
 

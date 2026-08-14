@@ -9,7 +9,8 @@ Regular Chrome Meet controller
   -> Chrome extension service worker
   -> Native Messaging
   -> scripts/native-host.mjs
-  -> dedicated GPT Meet / ChatGPT Voice / check-env.sh / SwitchAudioSource
+  -> shared dedicated Chrome (GPT Meet tab + ChatGPT Voice tab)
+  -> check-env.sh / SwitchAudioSource
 ```
 
 拡張機能は会議音声や字幕を保存・送信しません。普段使うChromeのMeetページではコントローラー表示だけを行い、ユーザー本人のマイクボタンは操作しません。GPT参加者の状態取得とマイク操作はNative Hostから専用Chromeへ接続して行います。Native Hostは許可済みの固定コマンドだけを受け付け、任意のシェルコマンドは実行しません。
@@ -31,7 +32,7 @@ npm install
 4. 拡張IDが`jlikakgdldiihhflkobhnpfegjlcakdd`であることを確認する
 5. Meeting Copilot Controlsをツールバーへ固定する
 
-初期セットアップの`専用Chrome設定を開く`を押し、開いた専用Chromeにも同じ手順で拡張を読み込みます。直接開く場合は次を実行します。
+初期セットアップの`専用Chrome設定を開く`を押し、開いた専用Chromeにも同じ手順で拡張を読み込みます。この1つの専用プロファイルをMeetとChatGPTで共用します。直接開く場合は次を実行します。
 
 ```bash
 ./scripts/open-control-ui-setup.sh
@@ -43,10 +44,10 @@ Chrome 137以降の公式ビルドでは`--load-extension`が削除されてい�
 
 1. Native Messaging Hostとのローカル接続
 2. BlackHoleと`Meeting Copilot Output`、現在の音声経路
-3. ChatGPT Project URLと専用ChatGPTログイン
-4. Meet専用Chromeの拡張読込とGoogleログイン
+3. 共通の専用Chrome、拡張読込、Googleログイン
+4. 同じ専用ChromeでのChatGPT Project URLとログイン
 
-音声デバイス、Project URL、専用Chromeの拡張読込は自動判定します。ChatGPTとGoogleのログインは外部状態を保存しないため、専用Chromeで確認後に利用者がチェックします。完了後もMeet URL入力画面右上の設定ボタンから再度開けます。
+音声デバイス、Project URL、専用Chromeの拡張読込は自動判定します。ChatGPTとGoogleのログインは外部状態を保存しないため、同じ専用Chromeで確認後に利用者がチェックします。完了後もMeet URL入力画面右上の設定ボタンから再度開けます。
 
 ## 利用方法
 
@@ -58,7 +59,7 @@ ChromeツールバーでMeeting Copilot Controlsを開きます。
 
 設定が未完了なら先にセットアップ画面が表示され、Meet URL入力へは進みません。統合起動時は音声経路も自動的に設定します。
 
-最後に使ったURLは普段使うChromeの拡張ストレージへ保存され、次回起動時に復元されます。開始後に専用Chromeが再起動しても、ローカルの起動ジョブは継続します。進行状況とエラーの詳細は`.meeting-copilot-runtime/meeting-launch.log`へ記録されます。
+最後に使ったURLは普段使うChromeの拡張ストレージへ保存され、次回起動時に復元されます。開始時に共通の専用Chromeを一度再起動し、ChatGPT VoiceとMeetを別タブで開きます。進行状況とエラーの詳細は`.meeting-copilot-runtime/meeting-launch.log`へ記録されます。
 
 参加前の固定待機は2秒です。Meet側の読み込みが遅い環境では、`.meeting-copilot.env`の`MEETING_COPILOT_JOIN_DELAY`で秒数を増やせます。
 
@@ -81,6 +82,8 @@ ChromeツールバーでMeeting Copilot Controlsを開きます。
 ツールバーに見つからない場合は、Chromeの拡張機能メニューからMeeting Copilot Controlsを固定します。
 
 マイク操作は常にNative Host経由で専用ChromeのGPT参加者へ送られます。表示中の通常Chromeのマイクボタンをクリックするフォールバックはありません。最後に成功したGPT参加者の状態は会議URLごとにローカル保存されるため、専用Chromeが一時的に状態を公開しない画面でもボタンは`ミュート`または`ミュート解除`を表示します。
+
+`Voice再起動`はChatGPTタブだけを置き換えます。専用ChromeのプロセスとMeetタブは再起動しないため、Meetから退出せずに新しいVoice会話を開始できます。
 
 ## 更新
 

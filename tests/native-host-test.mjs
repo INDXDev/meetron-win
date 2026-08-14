@@ -90,7 +90,9 @@ child.stdout.on("data", (chunk) => {
     !invalidProject.error?.includes("ChatGPT Project") ||
     invalidConfirmation?.ok !== false ||
     setupStatus?.ok !== true ||
-    setupStatus.data?.dedicatedChrome?.extensionInstalled !== true
+    setupStatus.data?.dedicatedChrome?.extensionInstalled !== true ||
+    setupStatus.data?.dedicatedChrome?.sharedProfile !== true ||
+    setupStatus.data?.confirmations?.profileLayoutVersion !== 2
   ) {
     rmSync(temporaryDir, { recursive: true, force: true });
     process.stderr.write(`Unexpected Native Host responses: ${JSON.stringify(responses)}\n`);

@@ -29,6 +29,32 @@ await context.addInitScript(() => {
           return { ok: true, data: { status: "ok", after: "unmuted", verified: true } };
         }
         if (request.type === "setup.status") {
+          if (globalThis.__unifiedSetupIncomplete) {
+            return {
+              ok: true,
+              data: {
+                hostConnected: true,
+                repoRoot: "/Users/test/meeting-copilot",
+                audio: {
+                  ready: true,
+                  devicesReady: true,
+                  requiredDevices: {
+                    "BlackHole 2ch": true,
+                    "BlackHole 16ch": true,
+                    "Meeting Copilot Output": true,
+                  },
+                },
+                project: { configured: false, url: "" },
+                dedicatedChrome: { extensionInstalled: false, sharedProfile: true },
+                confirmations: {
+                  profileLayoutVersion: 2,
+                  chatgptLoginConfirmed: false,
+                  googleLoginConfirmed: false,
+                },
+                complete: false,
+              },
+            };
+          }
           if (globalThis.__setupIncomplete) {
             return {
               ok: true,
@@ -249,5 +275,29 @@ if (
   throw new Error(`Setup wizard did not show the incomplete audio step: ${JSON.stringify(setupResult)}`);
 }
 await setupPopup.screenshot({ path: "/tmp/meeting-copilot-setup-ui.png" });
+
+const unifiedSetupPopup = await context.newPage();
+await unifiedSetupPopup.setContent(popupHtml);
+await unifiedSetupPopup.addStyleTag({ content: await readFile(resolve(repoRoot, "extension/popup.css"), "utf8") });
+await unifiedSetupPopup.evaluate(() => { globalThis.__unifiedSetupIncomplete = true; });
+await unifiedSetupPopup.evaluate(await readFile(resolve(repoRoot, "extension/popup.js"), "utf8"));
+await unifiedSetupPopup.waitForFunction(() =>
+  document.querySelector('[data-step="2"]:not([hidden]) h2')?.textContent === "専用Chrome",
+);
+const unifiedSetupResult = await unifiedSetupPopup.evaluate(() => ({
+  step: document.querySelector("[data-step-count]").textContent,
+  heading: document.querySelector('[data-step="2"] h2').textContent,
+  path: document.querySelector("[data-extension-path]").textContent,
+  nextDisabled: document.querySelector("[data-next-step]").disabled,
+}));
+if (
+  unifiedSetupResult.step !== "3 / 4" ||
+  unifiedSetupResult.heading !== "専用Chrome" ||
+  unifiedSetupResult.path !== "/Users/test/meeting-copilot/extension" ||
+  !unifiedSetupResult.nextDisabled
+) {
+  throw new Error(`Unified profile setup step is incomplete: ${JSON.stringify(unifiedSetupResult)}`);
+}
+await unifiedSetupPopup.screenshot({ path: "/tmp/meeting-copilot-unified-setup-ui.png" });
 await browser.close();
 process.stdout.write("Extension panel, launcher, and setup wizard UI tests passed.\n");

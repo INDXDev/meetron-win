@@ -53,11 +53,11 @@ GPT参加者の会議マイクは、経路が完成するまでミュートし�
 ./scripts/open-gpt-participant.sh "https://meet.google.com/xxx-yyyy-zzz"
 ```
 
-Google Meetでは参加前設定を自動化できます。専用Chromeがすでに起動している場合は、そのプロファイルだけを再起動します。
+Google Meetでは参加前設定を自動化できます。専用Chromeがすでに起動している場合は、同じプロファイルへMeetタブを追加します。
 
 ```bash
 npm install
-./scripts/open-gpt-participant.sh --auto-prepare --restart-profile \
+./scripts/open-gpt-participant.sh --auto-prepare \
   "https://meet.google.com/xxx-yyyy-zzz"
 ```
 
@@ -70,10 +70,10 @@ npm install
 - Speaker: `BlackHole 2ch`
 - マイクとカメラをオフにした参加前状態
 
-参加リクエストまで自動化する場合は`--join`を使います。Meet側の検証準備を待つため、初期値では参加前設定の完了後2秒待機します。事前にMeet専用ChromeプロファイルでGoogleへ一度ログインしてください。匿名状態ではGoogle側が自動ノックを拒否する場合があります。
+参加リクエストまで自動化する場合は`--join`を使います。Meet側の検証準備を待つため、初期値では参加前設定の完了後2秒待機します。事前に共通の専用ChromeプロファイルでGoogleへ一度ログインしてください。匿名状態ではGoogle側が自動ノックを拒否する場合があります。
 
 ```bash
-./scripts/open-gpt-participant.sh --join --restart-profile \
+./scripts/open-gpt-participant.sh --join \
   "https://meet.google.com/xxx-yyyy-zzz"
 ```
 
@@ -105,11 +105,13 @@ Zoomのリンクがデスクトップアプリを開こうとした場合は、�
 ./scripts/open-chatgpt-live.sh --restart-profile
 ```
 
-初回だけ専用ChromeでChatGPTへログインし、コマンドを再実行します。その後は次を自動で行います。
+初回だけ、Meetと共用する専用ChromeでChatGPTへログインし、コマンドを再実行します。その後は次を自動で行います。
 
 - `Meeting Copilot` Projectを開く
 - 毎回新しいチャットを作る
 - ChatGPT Voiceを開始する
+
+会議中のVoice再起動には常駐パネルを使います。ChatGPTタブだけを置き換え、Meetタブと参加状態を維持します。`--restart-profile`は共通Chrome全体を終了するため、Meet参加中には使わないでください。
 
 手動で行う場合:
 

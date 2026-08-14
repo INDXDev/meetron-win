@@ -16,7 +16,7 @@ Include the affected version, macOS and Chrome versions, reproduction steps, imp
 - The Meet page overlay uses a closed shadow root and accepts command clicks only from trusted user input.
 - The service worker restricts privileged setup commands to extension pages and restricts Meet content scripts to meeting-control commands.
 - Chrome DevTools endpoints bind to `127.0.0.1` and use installation-specific ports stored in the ignored local configuration file.
-- Dedicated Chrome profiles should be used only for Meeting Copilot. Anyone with access to the same macOS account can inspect those profiles and local runtime files.
+- The shared dedicated Chrome profile should be used only for Meeting Copilot. Anyone with access to the same macOS account can inspect that profile and local runtime files.
 - Google Meet and ChatGPT Web are automated through their user interfaces. Upstream UI changes can cause a fail-closed launch or require code updates.
 
 Before using this software with confidential meetings, review the source, organizational policy, participant-consent requirements, and the data controls of every connected service.

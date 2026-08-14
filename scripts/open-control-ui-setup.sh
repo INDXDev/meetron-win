@@ -53,28 +53,28 @@ find_profile_pids() {
 
 profile_pids="$(find_profile_pids)"
 if [ -n "$profile_pids" ]; then
-  printf '[INFO] Restarting the dedicated Meet profile for extension setup.\n'
-  for profile_pid in $profile_pids; do
-    kill "$profile_pid" 2>/dev/null || true
-  done
-  attempts=0
-  while [ -n "$(find_profile_pids)" ] && [ "$attempts" -lt 20 ]; do
-    sleep 0.25
-    attempts=$((attempts + 1))
-  done
+  if ! curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; then
+    printf 'The shared Chrome profile is running without its automation endpoint.\n' >&2
+    printf 'Close it, then run this setup command again.\n' >&2
+    exit 1
+  fi
+  node "$repo_root/scripts/open-chrome-page.mjs" \
+    --cdp "http://127.0.0.1:$cdp_port" \
+    --url 'chrome://extensions/' >/dev/null
+else
+  open -na "$chrome_path" --args \
+    --remote-debugging-address=127.0.0.1 \
+    "--remote-debugging-port=$cdp_port" \
+    --use-fake-ui-for-media-stream \
+    "--user-data-dir=$profile_dir" \
+    --no-first-run \
+    --new-window \
+    'chrome://extensions/'
 fi
-
-open -na "$chrome_path" --args \
-  --remote-debugging-address=127.0.0.1 \
-  "--remote-debugging-port=$cdp_port" \
-  "--user-data-dir=$profile_dir" \
-  --no-first-run \
-  --new-window \
-  'chrome://extensions/'
 
 cat <<EOF
 
-In the dedicated Chrome window:
+In the shared Meeting Copilot Chrome window:
   1. Enable Developer mode.
   2. Click Load unpacked.
   3. Select: $extension_dir

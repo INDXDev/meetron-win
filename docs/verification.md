@@ -5,7 +5,7 @@
 最初はGoogle Meetを推奨します。テスト会議には次の3参加者相当を用意します。
 
 1. ユーザー本人: 通常のマイクとヘッドホンで参加
-2. GPT参加者: 専用Chromeプロファイルから`GPT-Live`として参加
+2. GPT参加者: ChatGPT Voiceと共用する専用Chromeプロファイルから`GPT-Live`として参加
 3. 確認者: 別のPCまたはスマートフォンから参加し、GPT音声が実際に会議へ届くか確認
 
 同じMacだけで確認すると、ヘッドホンのモニター音と会議へ送信された音を区別しにくいため、確認者は別端末にします。
@@ -40,12 +40,13 @@
 ./scripts/open-gpt-participant.sh "https://meet.google.com/xxx-yyyy-zzz"
 ```
 
-- [ ] 専用Chromeプロファイルで会議ページが開く
+- [ ] 同じ専用Chromeプロファイル内でChatGPT Voiceと会議ページが別タブで開く
 - [ ] 表示名が`GPT-Live`
 - [ ] カメラがオフ
 - [ ] Microphoneが`BlackHole 16ch`
 - [ ] Speakerが`BlackHole 2ch`
 - [ ] Chromeのマイク権限が許可されている
+- [ ] `Voice再起動`後もGPT参加者がMeetから退出しない
 - [ ] GPT参加者の会議マイクがミュート
 
 ## 3. 会議からChatGPTへの片方向テスト

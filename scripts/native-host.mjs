@@ -32,8 +32,8 @@ const envPath = resolve(repoRoot, ".meeting-copilot.env");
 const dedicatedProfileDir =
   process.env.MEETING_COPILOT_PROFILE_DIR ||
   resolve(process.env.HOME || "", "Library/Application Support/MeetingCopilot/GPTParticipantChrome");
-let chatgptBrowser = null;
-let meetBrowser = null;
+const PROFILE_LAYOUT_VERSION = 2;
+let dedicatedBrowser = null;
 
 if (process.argv.includes("--help")) {
   process.stdout.write(`Meeting Copilot Native Messaging Host\n\nExpected extension: ${EXTENSION_ID}\n`);
@@ -70,10 +70,6 @@ function commandEnvironment() {
     ...process.env,
     PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
     MEETING_COPILOT_CDP_PORT: configuredPort("MEETING_COPILOT_CDP_PORT", "9223"),
-    MEETING_COPILOT_CHATGPT_CDP_PORT: configuredPort(
-      "MEETING_COPILOT_CHATGPT_CDP_PORT",
-      "9224",
-    ),
   };
 }
 
@@ -175,20 +171,20 @@ async function getAudioStatus() {
   }
 }
 
-async function connectChatgpt() {
-  if (chatgptBrowser?.isConnected()) {
-    return chatgptBrowser;
+async function connectDedicatedChrome() {
+  if (dedicatedBrowser?.isConnected()) {
+    return dedicatedBrowser;
   }
 
-  chatgptBrowser = await chromium.connectOverCDP(
-    `http://127.0.0.1:${configuredPort("MEETING_COPILOT_CHATGPT_CDP_PORT", "9224")}`,
+  dedicatedBrowser = await chromium.connectOverCDP(
+    `http://127.0.0.1:${configuredPort("MEETING_COPILOT_CDP_PORT", "9223")}`,
     { timeout: 3_000 },
   );
-  return chatgptBrowser;
+  return dedicatedBrowser;
 }
 
 async function getChatgptPage() {
-  const browser = await connectChatgpt();
+  const browser = await connectDedicatedChrome();
   return browser
     .contexts()
     .flatMap((context) => context.pages())
@@ -217,7 +213,7 @@ async function getChatgptStatus() {
       title: await page.title(),
     };
   } catch (error) {
-    chatgptBrowser = null;
+    dedicatedBrowser = null;
     return {
       browserConnected: false,
       voiceActive: false,
@@ -225,18 +221,6 @@ async function getChatgptStatus() {
       error: error.message,
     };
   }
-}
-
-async function connectMeet() {
-  if (meetBrowser?.isConnected()) {
-    return meetBrowser;
-  }
-
-  meetBrowser = await chromium.connectOverCDP(
-    `http://127.0.0.1:${configuredPort("MEETING_COPILOT_CDP_PORT", "9223")}`,
-    { timeout: 3_000 },
-  );
-  return meetBrowser;
 }
 
 async function locatorIsVisible(locator) {
@@ -249,7 +233,7 @@ async function locatorIsVisible(locator) {
 
 async function getDedicatedMeetStatus() {
   try {
-    const browser = await connectMeet();
+    const browser = await connectDedicatedChrome();
     const page = browser
       .contexts()
       .flatMap((context) => context.pages())
@@ -293,7 +277,7 @@ async function getDedicatedMeetStatus() {
       title: await page.title(),
     };
   } catch (error) {
-    meetBrowser = null;
+    dedicatedBrowser = null;
     return {
       browserConnected: false,
       connection: "not-running",
@@ -368,18 +352,25 @@ function readSetupState() {
     const previousLaunch = getMeetingLaunchState();
     const previouslyWorked = previousLaunch?.status === "completed";
     return {
-      chatgptLoginConfirmed: previouslyWorked,
+      profileLayoutVersion: PROFILE_LAYOUT_VERSION,
+      chatgptLoginConfirmed: false,
       googleLoginConfirmed: previouslyWorked,
     };
   }
   try {
     const state = JSON.parse(readFileSync(setupStatePath, "utf8"));
+    const usesSharedProfile = state.profileLayoutVersion === PROFILE_LAYOUT_VERSION;
     return {
-      chatgptLoginConfirmed: state.chatgptLoginConfirmed === true,
+      profileLayoutVersion: PROFILE_LAYOUT_VERSION,
+      chatgptLoginConfirmed: usesSharedProfile && state.chatgptLoginConfirmed === true,
       googleLoginConfirmed: state.googleLoginConfirmed === true,
     };
   } catch {
-    return { chatgptLoginConfirmed: false, googleLoginConfirmed: false };
+    return {
+      profileLayoutVersion: PROFILE_LAYOUT_VERSION,
+      chatgptLoginConfirmed: false,
+      googleLoginConfirmed: false,
+    };
   }
 }
 
@@ -388,7 +379,11 @@ function writeSetupState(state) {
   const temporaryPath = `${setupStatePath}.${process.pid}.tmp`;
   writeFileSync(
     temporaryPath,
-    `${JSON.stringify({ ...state, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+    `${JSON.stringify({
+      ...state,
+      profileLayoutVersion: PROFILE_LAYOUT_VERSION,
+      updatedAt: new Date().toISOString(),
+    }, null, 2)}\n`,
     { mode: 0o600 },
   );
   renameSync(temporaryPath, setupStatePath);
@@ -437,6 +432,7 @@ async function getSetupStatus(audioStatus = null) {
       url: projectUrl,
     },
     dedicatedChrome: {
+      sharedProfile: true,
       extensionInstalled,
       profileDir: dedicatedProfileDir,
     },
@@ -497,7 +493,7 @@ function openChatgptSetup() {
   }
   return runDetached(
     resolve(scriptsDir, "open-chatgpt-live.sh"),
-    ["--restart-profile"],
+    [],
     "setup-chatgpt.log",
   );
 }
@@ -593,6 +589,7 @@ function startMeeting(payload) {
   }
 
   const meetingUrl = normalizeMeetingUrl(payload?.meetingUrl);
+  dedicatedBrowser = null;
   mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
   writeJsonAtomic(micStatePath, {
     meetingUrl,
@@ -628,7 +625,7 @@ async function getStatus() {
   ]);
   const setup = await getSetupStatus(audio);
   return {
-    host: { connected: true, version: "0.5.0" },
+    host: { connected: true, version: "0.6.0" },
     audio,
     chatgpt,
     dedicatedMeet,
@@ -643,9 +640,18 @@ async function getStatus() {
 }
 
 async function restartVoice() {
-  chatgptBrowser = null;
-  const result = await run(resolve(scriptsDir, "open-chatgpt-live.sh"), ["--restart-profile"], 120_000);
-  return { restarted: true, output: result.stdout.trim() };
+  const meetBefore = await getDedicatedMeetStatus();
+  await stopVoice();
+  const result = await run(resolve(scriptsDir, "open-chatgpt-live.sh"), ["--replace-tab"], 120_000);
+  const meetAfter = await getDedicatedMeetStatus();
+  if (meetBefore.connection === "joined" && meetAfter.connection !== "joined") {
+    throw new Error("Voiceは再起動しましたが、Meet参加状態を維持できませんでした");
+  }
+  return {
+    restarted: true,
+    meetPreserved: meetBefore.connection !== "joined" || meetAfter.connection === "joined",
+    output: result.stdout.trim(),
+  };
 }
 
 async function toggleMeetMicrophone() {

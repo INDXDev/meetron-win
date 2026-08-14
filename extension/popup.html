@@ -103,27 +103,20 @@
           </section>
 
           <section class="step" data-step="2" hidden>
-            <h2>ChatGPT</h2>
-            <p class="step-copy">Meeting Copilot Projectと専用ログインを設定します。</p>
-            <form data-project-form novalidate>
-              <label for="project-url">ChatGPT Project URL</label>
-              <input id="project-url" type="url" spellcheck="false" placeholder="https://chatgpt.com/g/g-p-.../project">
-              <button class="wide" data-save-project type="submit">Project URLを保存</button>
-            </form>
-            <button class="secondary wide" data-open-chatgpt type="button">専用ChatGPTを開く</button>
-            <label class="confirmation">
-              <input data-confirm-chatgpt type="checkbox">
-              <span>専用ChromeでChatGPTへログイン済み</span>
-            </label>
-          </section>
-
-          <section class="step" data-step="3" hidden>
-            <h2>Meet用Chrome</h2>
-            <p class="step-copy">常駐パネルとGoogleログインを準備します。</p>
+            <h2>専用Chrome</h2>
+            <p class="step-copy">共用Chromeを開き、表示したパスから同じ拡張を読み込みます。</p>
             <div class="check-row">
               <span class="check-indicator" data-extension-check></span>
               <span>専用Chromeの拡張機能</span>
               <strong data-extension-label>確認中</strong>
+            </div>
+            <div class="bootstrap extension-path">
+              <code data-extension-path>extension</code>
+              <button class="icon-button" data-copy-extension type="button" title="拡張機能パスをコピー" aria-label="拡張機能パスをコピー">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="14" height="14" x="8" y="8" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+              </button>
             </div>
             <button class="secondary wide" data-open-dedicated type="button">専用Chrome設定を開く</button>
             <label class="confirmation">
@@ -131,6 +124,21 @@
               <span>専用ChromeでGoogleへログイン済み</span>
             </label>
             <button class="text-button" data-refresh-setup type="button">状態を再確認</button>
+          </section>
+
+          <section class="step" data-step="3" hidden>
+            <h2>ChatGPT</h2>
+            <p class="step-copy">同じ専用ChromeでProjectとログインを設定します。</p>
+            <form data-project-form novalidate>
+              <label for="project-url">ChatGPT Project URL</label>
+              <input id="project-url" type="url" spellcheck="false" placeholder="https://chatgpt.com/g/g-p-.../project">
+              <button class="wide" data-save-project type="submit">Project URLを保存</button>
+            </form>
+            <button class="secondary wide" data-open-chatgpt type="button">同じ専用ChromeでChatGPTを開く</button>
+            <label class="confirmation">
+              <input data-confirm-chatgpt type="checkbox">
+              <span>専用ChromeでChatGPTへログイン済み</span>
+            </label>
           </section>
 
           <section class="step complete-step" data-step="4" hidden>

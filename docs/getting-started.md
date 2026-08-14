@@ -60,6 +60,8 @@ Chrome公式ビルドでは開発版拡張の読込をコマンドだけで完�
 
 ツールバーのMeeting Copilot Controlsを開きます。設定が不足している場合は、Meet URL入力画面の代わりに初期セットアップが自動表示されます。
 
+バージョン0.5以前から更新した場合は、従来のMeet用プロファイルを共通プロファイルとして引き継ぐため、拡張とGoogleログインは維持されます。ChatGPTは同じ共通プロファイルで一度ログインし直してください。旧`ChatGPTVoiceChrome`は自動削除されず、`./scripts/uninstall.sh --remove-data --yes`を実行した場合に削除されます。
+
 ### ステップ1: ローカル連携
 
 拡張とNative Messaging Hostの接続を確認します。未接続なら表示されたコマンドをリポジトリの場所に合わせて実行し、`接続を再確認`を押します。
@@ -79,7 +81,15 @@ Chrome公式ビルドでは開発版拡張の読込をコマンドだけで完�
 
 作成後に`状態を再確認`し、`音声経路を設定`を押します。入力が`BlackHole 2ch`、出力が`Meeting Copilot Output`へ切り替わります。詳しくは[BlackHoleセットアップ](setup-blackhole.md)と[音声ルーティング](audio-routing.md)を参照してください。
 
-### ステップ3: ChatGPT
+### ステップ3: 専用Chrome
+
+`専用Chrome設定を開く`を押します。このChromeプロファイルを、GPT参加者のMeetとChatGPT Voiceの両方で共用します。
+
+開いた`chrome://extensions`でデベロッパーモードを有効にし、画面に表示されたパスの`extension`ディレクトリを読み込みます。この専用ChromeでGoogleへログインし、`専用ChromeでGoogleへログイン済み`をチェックします。
+
+自動参加を安定させるには、このGoogleアカウントをテスト会議またはCalendar予定の参加者へ追加してください。専用Chromeと普段使うChromeで同じGoogleアカウントを使う必要はありません。
+
+### ステップ4: ChatGPT
 
 ChatGPT Webで`Meeting Copilot` Projectを作成し、[ChatGPT Project設定](chatgpt-project.md)のProject instructionsを設定します。
 
@@ -89,13 +99,7 @@ Projectを開いたURLを入力して保存します。形式は次のとおり�
 https://chatgpt.com/g/g-p-PROJECT_ID/project
 ```
 
-`専用ChatGPTを開く`を押してログインします。対象Projectへアクセスできることを確認し、ポップアップの`専用ChromeでChatGPTへログイン済み`をチェックします。Project URLはGit対象外の`.meeting-copilot.env`へ保存されます。
-
-### ステップ4: Meet用Chrome
-
-`専用Chrome設定を開く`を押し、開いた`chrome://extensions`でデベロッパーモードを有効にして、同じ`extension`ディレクトリを読み込みます。拡張機能が読込済みであることはポップアップが自動確認します。この専用ChromeでGoogleへログインし、`専用ChromeでGoogleへログイン済み`をチェックします。
-
-自動参加を安定させるには、このGoogleアカウントをテスト会議またはCalendar予定の参加者へ追加してください。両方の専用Chromeで普段と同じアカウントを使う必要はありません。
+`同じ専用ChromeでChatGPTを開く`を押してログインします。対象Projectへアクセスできることを確認し、ポップアップの`専用ChromeでChatGPTへログイン済み`をチェックします。Project URLはGit対象外の`.meeting-copilot.env`へ保存されます。
 
 全項目が揃うと`セットアップ完了`が表示されます。後から見直す場合は、Meet URL入力画面右上の設定ボタンを押します。以前に正常起動まで完了したユーザーは、その実績を引き継いでMeet URL入力画面から開始します。
 
@@ -106,7 +110,7 @@ https://chatgpt.com/g/g-p-PROJECT_ID/project
 1. 普段使うChromeでテストMeetへ参加する
 2. 拡張のポップアップへ同じ`https://meet.google.com/xxx-xxxx-xxx`形式のURLを入力する
 3. `開始`を押す
-4. ChatGPT Voice用ChromeとMeet用Chromeが開くまで待つ
+4. 専用Chrome内でChatGPT VoiceタブとMeetタブが開くまで待つ
 5. 必要ならMeet主催者側で`GPT-Live`の参加を許可する
 6. 普段使うChromeのMeet右下にあるパネルでGPT参加者、ChatGPT Voice、音声経路を確認する
 
@@ -129,6 +133,8 @@ https://chatgpt.com/g/g-p-PROJECT_ID/project
 4. 同じMeet上の常駐パネルでGPT参加者の状態を確認する
 
 開始時にシステム入力を`BlackHole 2ch`、出力を`Meeting Copilot Output`へ切り替え、変更前のデバイスをローカルへ保存します。常駐パネルでは専用ChromeのGPT参加者マイク、ChatGPT Voiceの再起動、セッション終了、環境診断を操作できます。パネルはユーザー本人のマイクボタンを直接操作しません。
+
+`Voice再起動`は専用Chrome全体を再起動せず、ChatGPTタブだけを閉じて新しいVoiceタブを作ります。Meet参加者は同じ会議に残ります。
 
 ## 7. 終了する
 

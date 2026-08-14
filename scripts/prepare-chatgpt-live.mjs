@@ -4,12 +4,13 @@ import { chromium } from "playwright-core";
 
 const args = process.argv.slice(2);
 const options = {
-  cdp: "http://127.0.0.1:9224",
+  cdp: "http://127.0.0.1:9223",
   projectUrl: "",
+  replaceTab: false,
 };
 
 function usage() {
-  process.stdout.write(`Usage: node scripts/prepare-chatgpt-live.mjs [options]\n\nOptions:\n  --cdp URL           Chrome DevTools endpoint (default: ${options.cdp})\n  --project-url URL   ChatGPT Project landing URL\n  -h, --help          Show this help\n`);
+  process.stdout.write(`Usage: node scripts/prepare-chatgpt-live.mjs [options]\n\nOptions:\n  --cdp URL           Chrome DevTools endpoint (default: ${options.cdp})\n  --project-url URL   ChatGPT Project landing URL\n  --replace-tab       Close only existing ChatGPT tabs before starting Voice\n  -h, --help          Show this help\n`);
 }
 
 for (let index = 0; index < args.length; index += 1) {
@@ -20,6 +21,9 @@ for (let index = 0; index < args.length; index += 1) {
       break;
     case "--project-url":
       options.projectUrl = args[++index] || "";
+      break;
+    case "--replace-tab":
+      options.replaceTab = true;
       break;
     case "-h":
     case "--help":
@@ -49,9 +53,15 @@ await context.grantPermissions(["microphone"], {
   origin: "https://chatgpt.com",
 });
 
-let page = context
+const existingChatgptPages = context
   .pages()
-  .find((candidate) => candidate.url().startsWith("https://chatgpt.com/"));
+  .filter((candidate) => candidate.url().startsWith("https://chatgpt.com/"));
+
+if (options.replaceTab) {
+  await Promise.all(existingChatgptPages.map((candidate) => candidate.close()));
+}
+
+let page = options.replaceTab ? null : existingChatgptPages[0];
 
 if (!page) {
   page = await context.newPage();
@@ -122,6 +132,7 @@ const result = {
   url: page.url(),
   projectUrl: options.projectUrl,
   newChatCreated: true,
+  replacedTab: options.replaceTab,
   microphoneOn: await microphoneOn.isVisible(),
   title: await page.title(),
 };

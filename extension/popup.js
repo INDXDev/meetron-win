@@ -89,11 +89,11 @@ function setCheck(indicator, label, ready, readyText = "完了", missingText = "
 function firstIncompleteStep(status) {
   if (!status) return 0;
   if (!status.audio?.devicesReady) return 1;
-  if (!status.project?.configured || !status.confirmations?.chatgptLoginConfirmed) return 2;
   if (
     !status.dedicatedChrome?.extensionInstalled ||
     !status.confirmations?.googleLoginConfirmed
-  ) return 3;
+  ) return 2;
+  if (!status.project?.configured || !status.confirmations?.chatgptLoginConfirmed) return 3;
   return 4;
 }
 
@@ -102,14 +102,14 @@ function canAdvance(step) {
   if (step === 1) return Boolean(setupStatus?.audio?.devicesReady);
   if (step === 2) {
     return Boolean(
-      setupStatus?.project?.configured &&
-      setupStatus?.confirmations?.chatgptLoginConfirmed,
+      setupStatus?.dedicatedChrome?.extensionInstalled &&
+      setupStatus?.confirmations?.googleLoginConfirmed,
     );
   }
   if (step === 3) {
     return Boolean(
-      setupStatus?.dedicatedChrome?.extensionInstalled &&
-      setupStatus?.confirmations?.googleLoginConfirmed,
+      setupStatus?.project?.configured &&
+      setupStatus?.confirmations?.chatgptLoginConfirmed,
     );
   }
   return true;
@@ -193,6 +193,10 @@ function renderSetup() {
   );
   document.querySelector("[data-confirm-google]").checked =
     setupStatus?.confirmations?.googleLoginConfirmed === true;
+  if (setupStatus?.repoRoot) {
+    document.querySelector("[data-extension-path]").textContent =
+      `${setupStatus.repoRoot}/extension`;
+  }
 }
 
 async function refresh({ preserveStep = false } = {}) {
@@ -295,7 +299,7 @@ document.querySelector("[data-configure-audio]").addEventListener("click", (even
   runSetupAction(event.currentTarget, "setup.audio.configure", {}, "音声経路を設定しています", "音声経路を設定しました"),
 );
 document.querySelector("[data-open-chatgpt]").addEventListener("click", (event) =>
-  runSetupAction(event.currentTarget, "setup.open.chatgpt", {}, "専用ChatGPTを開いています", "専用ChatGPTを開きました"),
+  runSetupAction(event.currentTarget, "setup.open.chatgpt", {}, "同じ専用ChromeでChatGPTを開いています", "専用ChromeでChatGPTを開きました"),
 );
 document.querySelector("[data-open-dedicated]").addEventListener("click", (event) =>
   runSetupAction(event.currentTarget, "setup.open.dedicated-chrome", {}, "専用Chromeを開いています", "専用Chromeを開きました"),
@@ -336,6 +340,17 @@ document.querySelector("[data-copy-bootstrap]").addEventListener("click", async 
     setSetupMessage("コマンドをコピーしました", "success");
   } catch {
     setSetupMessage("コマンドを選択してコピーしてください", "error");
+  }
+});
+
+document.querySelector("[data-copy-extension]").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(
+      document.querySelector("[data-extension-path]").textContent,
+    );
+    setSetupMessage("拡張機能パスをコピーしました", "success");
+  } catch {
+    setSetupMessage("パスを選択してコピーしてください", "error");
   }
 });
 

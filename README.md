@@ -53,7 +53,7 @@ npm install
 ./scripts/install-control-ui.sh
 ```
 
-普段使うChromeでデベロッパーモードを有効にし、`extension`ディレクトリを「パッケージ化されていない拡張機能」として読み込みます。拡張の初期セットアップからMeet専用Chromeを開き、同じ拡張をそちらにも一度読み込みます。Chrome公式ビルドでは開発版拡張をコマンドだけで読み込めないため、このディレクトリ選択だけは手動です。詳しくは[MeetコントロールUI](docs/control-ui.md)を参照してください。
+普段使うChromeでデベロッパーモードを有効にし、`extension`ディレクトリを「パッケージ化されていない拡張機能」として読み込みます。初期セットアップから、MeetとChatGPTで共用する専用Chromeを開き、同じ拡張をそちらにも一度読み込みます。Chrome公式ビルドでは開発版拡張をコマンドだけで読み込めないため、このディレクトリ選択だけは手動です。詳しくは[MeetコントロールUI](docs/control-ui.md)を参照してください。
 
 普段使うChromeで拡張を開くと、音声デバイス、ChatGPT Project、専用Chromeを順に確認する初期セットアップが表示されます。完了後はMeet URLを入力して`開始`を押すだけで、音声経路の設定、ChatGPT Voiceの起動、GPT参加者のMeet参加、マイク解除までをバックグラウンドで実行します。通常ChromeのMeet上に出るパネルは専用ChromeのGPT参加者だけを操作し、ユーザー本人のMeetマイクには触れません。
 
@@ -77,7 +77,7 @@ ChatGPTの`Meeting Copilot` Projectで毎回新しいチャットを作成し、
 ./scripts/open-chatgpt-live.sh --restart-profile
 ```
 
-初回だけ専用ChromeでChatGPTへログインし、同じコマンドを再実行します。Project URLはローカル専用の`.meeting-copilot.env`へ保存し、リポジトリ配布には含めません。ChatGPT Webの入力はシステム既定の`BlackHole 2ch`、出力は`Meeting Copilot Output`を使います。
+初回だけ、Meetと共用する専用ChromeでChatGPTへログインし、同じコマンドを再実行します。Project URLはローカル専用の`.meeting-copilot.env`へ保存し、リポジトリ配布には含めません。ChatGPT Webの入力はシステム既定の`BlackHole 2ch`、出力は`Meeting Copilot Output`を使います。
 
 ChatGPT Voiceを開始し、Meetの参加リクエストまでまとめて実行する場合:
 
@@ -86,7 +86,7 @@ ChatGPT Voiceを開始し、Meetの参加リクエストまでまとめて実行
   "https://meet.google.com/xxx-yyyy-zzz"
 ```
 
-統合起動では入室後に会議マイクも自動解除し、Project instructionsでChatGPTの発話を制御します。低レベルの`open-gpt-participant.sh --join`だけを実行した場合は、従来どおりミュートのままです。Googleは匿名ユーザーや第三者ボットの自動ノックを拒否するため、`--join`を使う場合はMeet専用ChromeプロファイルでGoogleへ一度ログインしてください。安定運用では、そのアカウントをCalendarの参加者へ追加します。
+統合起動では、同じ専用Chromeの別タブでChatGPT VoiceとMeetを開き、入室後に会議マイクも自動解除します。Voice再起動はChatGPTタブだけを作り直すため、Meet参加状態を維持します。低レベルの`open-gpt-participant.sh --join`だけを実行した場合はミュートのままです。`--join`を使う場合は専用ChromeでGoogleへ一度ログインしてください。
 
 参加ボタン表示後の固定待機は既定で2秒です。必要な場合は`MEETING_COPILOT_JOIN_DELAY`で調整できます。MeetのUIからマイクボタンを検出できない場合は、標準ショートカットへ自動的にフォールバックします。
 

@@ -23,7 +23,7 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/open-gpt-participant.sh [options] MEETING_URL
 
-Opens a Google Meet or Zoom meeting in a dedicated Google Chrome profile.
+Opens a Google Meet or Zoom tab in the shared Meeting Copilot Chrome profile.
 
 Environment variables:
   MEETING_COPILOT_CHROME_PATH   Override the Google Chrome .app path.
@@ -36,7 +36,7 @@ Options:
   --auto-prepare       Grant Meet microphone permission and dismiss onboarding.
   --join               Prepare Meet and request admission automatically.
   --join-delay SEC     Override the delay before requesting admission.
-  --restart-profile    Restart the dedicated Chrome profile if already running.
+  --restart-profile    Restart the whole shared profile; this also closes ChatGPT.
   --dry-run            Print the launch command without opening Chrome.
 
 Examples:
@@ -181,21 +181,16 @@ find_profile_pids() {
   '
 }
 
-if [ "$auto_prepare" -eq 1 ]; then
-  if [ ! -d "$repo_root/node_modules/playwright-core" ]; then
-    printf 'playwright-core is required. Run: npm install\n' >&2
-    exit 1
-  fi
+if [ ! -d "$repo_root/node_modules/playwright-core" ]; then
+  printf 'playwright-core is required. Run: npm install\n' >&2
+  exit 1
+fi
 
-  profile_pids="$(find_profile_pids)"
-  if [ -n "$profile_pids" ]; then
-    if [ "$restart_profile" -ne 1 ]; then
-      printf 'The dedicated Chrome profile is already running.\n' >&2
-      printf 'Close it or pass --restart-profile.\n' >&2
-      exit 1
-    fi
-
-    printf '[INFO] Restarting dedicated Chrome profile.\n'
+launch_chrome=1
+profile_pids="$(find_profile_pids)"
+if [ -n "$profile_pids" ]; then
+  if [ "$restart_profile" -eq 1 ]; then
+    printf '[INFO] Restarting shared Meeting Copilot Chrome profile.\n'
     for profile_pid in $profile_pids; do
       kill "$profile_pid" 2>/dev/null || true
     done
@@ -205,8 +200,17 @@ if [ "$auto_prepare" -eq 1 ]; then
       sleep 0.25
       attempts=$((attempts + 1))
     done
+  elif curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; then
+    launch_chrome=0
+    printf '[INFO] Reusing shared Meeting Copilot Chrome profile.\n'
+  else
+    printf 'The shared Chrome profile is running without its automation endpoint.\n' >&2
+    printf 'Close it, then run the command again.\n' >&2
+    exit 1
   fi
+fi
 
+if [ "$launch_chrome" -eq 1 ]; then
   open -na "$chrome_path" --args \
     --remote-debugging-address=127.0.0.1 \
     "--remote-debugging-port=$cdp_port" \
@@ -215,17 +219,19 @@ if [ "$auto_prepare" -eq 1 ]; then
     --no-first-run \
     --new-window \
     "$meeting_url"
+fi
 
-  attempts=0
-  while ! curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; do
-    attempts=$((attempts + 1))
-    if [ "$attempts" -ge 40 ]; then
-      printf 'Chrome automation endpoint did not start on port %s.\n' "$cdp_port" >&2
-      exit 1
-    fi
-    sleep 0.25
-  done
+attempts=0
+while ! curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; do
+  attempts=$((attempts + 1))
+  if [ "$attempts" -ge 40 ]; then
+    printf 'Chrome automation endpoint did not start on port %s.\n' "$cdp_port" >&2
+    exit 1
+  fi
+  sleep 0.25
+done
 
+if [ "$auto_prepare" -eq 1 ]; then
   prepare_args=(
     --cdp "http://127.0.0.1:$cdp_port"
     --name "$participant_name"
@@ -261,11 +267,11 @@ if [ "$auto_prepare" -eq 1 ]; then
       ;;
   esac
 else
-  open -na "$chrome_path" --args \
-    "--user-data-dir=$profile_dir" \
-    --no-first-run \
-    --new-window \
-    "$meeting_url"
+  if [ "$launch_chrome" -eq 0 ]; then
+    node "$repo_root/scripts/open-chrome-page.mjs" \
+      --cdp "http://127.0.0.1:$cdp_port" \
+      --url "$meeting_url" >/dev/null
+  fi
 fi
 
 if [ "$auto_prepare" -eq 1 ]; then

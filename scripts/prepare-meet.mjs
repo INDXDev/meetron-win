@@ -66,15 +66,15 @@ await context.grantPermissions(["microphone"], {
   origin: "https://meet.google.com",
 });
 
-let page = context
+const meetPages = context
   .pages()
-  .find((candidate) => candidate.url().startsWith(options.url));
-
-if (!page) {
-  page = context
-    .pages()
-    .find((candidate) => candidate.url().startsWith("https://meet.google.com/"));
-}
+  .filter((candidate) => candidate.url().startsWith("https://meet.google.com/"));
+let page = meetPages.find((candidate) => candidate.url().startsWith(options.url));
+await Promise.all(
+  meetPages
+    .filter((candidate) => candidate !== page)
+    .map((candidate) => candidate.close()),
+);
 
 if (!page) {
   page = await context.newPage();

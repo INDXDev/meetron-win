@@ -101,32 +101,33 @@ fi
 chmod +x "$host_path" "$repo_root/scripts/native-host.mjs"
 
 env_path="$repo_root/.meeting-copilot.env"
-if ! grep -Eq '^MEETING_COPILOT_CDP_PORT=' "$env_path" 2>/dev/null ||
-   ! grep -Eq '^MEETING_COPILOT_CHATGPT_CDP_PORT=' "$env_path" 2>/dev/null; then
-  generated_ports="$(node -e '
+if ! grep -Eq '^MEETING_COPILOT_CDP_PORT=' "$env_path" 2>/dev/null; then
+  generated_port="$(node -e '
     const net = require("node:net");
-    const allocate = () => new Promise((resolve, reject) => {
-      const server = net.createServer();
-      server.unref();
-      server.on("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        const port = server.address().port;
-        server.close(() => resolve(port));
-      });
+    const server = net.createServer();
+    server.unref();
+    server.on("error", () => process.exit(1));
+    server.listen(0, "127.0.0.1", () => {
+      const port = server.address().port;
+      server.close(() => process.stdout.write(`${port}\n`));
     });
-    Promise.all([allocate(), allocate()]).then((ports) => {
-      if (ports[0] === ports[1]) process.exit(1);
-      process.stdout.write(`${ports[0]}\n${ports[1]}\n`);
-    }).catch(() => process.exit(1));
   ')"
-  meet_port="$(printf '%s\n' "$generated_ports" | sed -n '1p')"
-  chatgpt_port="$(printf '%s\n' "$generated_ports" | sed -n '2p')"
   touch "$env_path"
   chmod 600 "$env_path"
-  grep -Eq '^MEETING_COPILOT_CDP_PORT=' "$env_path" 2>/dev/null ||
-    printf 'MEETING_COPILOT_CDP_PORT=%s\n' "$meet_port" >> "$env_path"
-  grep -Eq '^MEETING_COPILOT_CHATGPT_CDP_PORT=' "$env_path" 2>/dev/null ||
-    printf 'MEETING_COPILOT_CHATGPT_CDP_PORT=%s\n' "$chatgpt_port" >> "$env_path"
+  printf 'MEETING_COPILOT_CDP_PORT=%s\n' "$generated_port" >> "$env_path"
+fi
+
+# Version 0.6 uses one shared Chrome process and a single CDP endpoint.
+if grep -Eq '^MEETING_COPILOT_CHATGPT_CDP_PORT=' "$env_path" 2>/dev/null; then
+  node -e '
+    const fs = require("node:fs");
+    const path = process.argv[1];
+    const text = fs.readFileSync(path, "utf8");
+    const updated = text.replace(/^MEETING_COPILOT_CHATGPT_CDP_PORT=.*(?:\r?\n|$)/m, "");
+    const temporary = `${path}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, updated, { mode: 0o600 });
+    fs.renameSync(temporary, path);
+  ' "$env_path"
 fi
 
 for manifest_dir in "${manifest_dirs[@]}"; do
@@ -149,11 +150,11 @@ Load the controller extension in your regular Chrome from:
 
   $extension_dir
 
-Then open the dedicated GPT participant Chrome setup page with:
+Then open the shared Meeting Copilot Chrome setup page with:
 
   $repo_root/scripts/open-control-ui-setup.sh
 
-Load the same unpacked extension in both profiles. The regular Chrome panel
-controls the GPT participant running in the dedicated profile.
+Load the same unpacked extension in regular Chrome and the shared dedicated
+profile. That profile hosts both the GPT participant and ChatGPT Voice tabs.
 EOF
 fi
