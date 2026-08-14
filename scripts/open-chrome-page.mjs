@@ -43,11 +43,9 @@ if (!new Set(["https:", "chrome:"]).has(parsedUrl.protocol)) {
 }
 
 const browser = await chromium.connectOverCDP(cdp);
-const context = browser.contexts()[0];
-if (!context) {
-  throw new Error("Chrome did not expose a browser context.");
-}
-const page = await context.newPage();
-await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
-await page.bringToFront();
-process.stdout.write(`${JSON.stringify({ opened: true, url: page.url() })}\n`);
+const session = await browser.newBrowserCDPSession();
+const { targetId } = await session.send("Target.createTarget", { url: targetUrl });
+await session.send("Target.activateTarget", { targetId });
+await session.detach();
+process.stdout.write(`${JSON.stringify({ opened: true, url: targetUrl, targetId })}\n`);
+process.exit(0);

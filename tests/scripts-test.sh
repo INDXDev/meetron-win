@@ -101,6 +101,15 @@ else
   fail 'control UI installer help'
 fi
 
+node_binary="$(command -v node)"
+if env -i HOME="$HOME" PATH=/usr/bin:/bin \
+  MEETING_COPILOT_NODE_PATH="$node_binary" \
+  "$repo_root/scripts/native-host.sh" --help >/dev/null; then
+  pass 'Native Host starts with Chrome-style PATH'
+else
+  fail 'Native Host Chrome PATH compatibility'
+fi
+
 for javascript in "$repo_root"/extension/*.js "$repo_root"/scripts/*.mjs "$repo_root"/tests/*.mjs; do
   if node --check "$javascript"; then
     pass "JavaScript syntax: ${javascript##*/}"

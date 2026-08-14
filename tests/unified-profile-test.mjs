@@ -53,6 +53,23 @@ try {
 
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const context = browser.contexts()[0];
+
+  const { stdout: internalPageOutput } = await execFileAsync(
+    process.execPath,
+    [
+      resolve(repoRoot, "scripts/open-chrome-page.mjs"),
+      "--cdp",
+      `http://127.0.0.1:${port}`,
+      "--url",
+      "chrome://version/",
+    ],
+    { cwd: repoRoot, timeout: 10_000 },
+  );
+  const internalPageResult = JSON.parse(internalPageOutput);
+  if (!internalPageResult.opened || internalPageResult.url !== "chrome://version/") {
+    throw new Error(`Chrome internal page did not open: ${internalPageOutput}`);
+  }
+
   await context.route("https://chatgpt.com/**", (route) =>
     route.fulfill({
       contentType: "text/html",

@@ -159,6 +159,8 @@ https://chatgpt.com/g/g-p-PROJECT_ID/project
 
 赤く表示された未完了項目を確認し、各画面の`状態を再確認`を押します。ログイン項目は専用Chromeでのログイン完了後にチェックを入れます。
 
+Native Messaging Hostが未接続のままなら、ポップアップのコピーアイコンからコマンドを再実行します。インストーラーは現在のNode.js絶対パスをローカル設定へ保存するため、Chromeから起動したHostも同じNode.jsを使用できます。実行後に普段使うChromeの`chrome://extensions`で拡張を再読み込みし、`接続を再確認`を押します。
+
 ### 起動に失敗する
 
 ```bash

@@ -79,7 +79,13 @@ if [ ! -d "$repo_root/node_modules/playwright-core" ]; then
   exit 1
 fi
 
-manifest_json="$(node -e '
+node_binary="$(command -v node || true)"
+if [ -z "$node_binary" ] || [ ! -x "$node_binary" ]; then
+  printf 'Node.js executable was not found. Install Node.js and run this installer again.\n' >&2
+  exit 1
+fi
+
+manifest_json="$("$node_binary" -e '
   const [hostPath, extensionId] = process.argv.slice(1);
   process.stdout.write(`${JSON.stringify({
     name: "com.meeting_copilot.host",
@@ -101,8 +107,25 @@ fi
 chmod +x "$host_path" "$repo_root/scripts/native-host.mjs"
 
 env_path="$repo_root/.meeting-copilot.env"
+touch "$env_path"
+chmod 600 "$env_path"
+
+"$node_binary" -e '
+  const fs = require("node:fs");
+  const [path, nodePath] = process.argv.slice(1);
+  const text = fs.readFileSync(path, "utf8");
+  const quote = (value) => `\x27${value.replaceAll("\x27", `\x27\\\x27\x27`)}\x27`;
+  const setting = `MEETING_COPILOT_NODE_PATH=${quote(nodePath)}`;
+  const updated = /^MEETING_COPILOT_NODE_PATH=.*$/m.test(text)
+    ? text.replace(/^MEETING_COPILOT_NODE_PATH=.*$/m, setting)
+    : `${text.trimEnd()}${text.trim() ? "\n" : ""}${setting}\n`;
+  const temporary = `${path}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, updated, { mode: 0o600 });
+  fs.renameSync(temporary, path);
+' "$env_path" "$node_binary"
+
 if ! grep -Eq '^MEETING_COPILOT_CDP_PORT=' "$env_path" 2>/dev/null; then
-  generated_port="$(node -e '
+  generated_port="$("$node_binary" -e '
     const net = require("node:net");
     const server = net.createServer();
     server.unref();
@@ -112,14 +135,12 @@ if ! grep -Eq '^MEETING_COPILOT_CDP_PORT=' "$env_path" 2>/dev/null; then
       server.close(() => process.stdout.write(`${port}\n`));
     });
   ')"
-  touch "$env_path"
-  chmod 600 "$env_path"
   printf 'MEETING_COPILOT_CDP_PORT=%s\n' "$generated_port" >> "$env_path"
 fi
 
 # Version 0.6 uses one shared Chrome process and a single CDP endpoint.
 if grep -Eq '^MEETING_COPILOT_CHATGPT_CDP_PORT=' "$env_path" 2>/dev/null; then
-  node -e '
+  "$node_binary" -e '
     const fs = require("node:fs");
     const path = process.argv[1];
     const text = fs.readFileSync(path, "utf8");
