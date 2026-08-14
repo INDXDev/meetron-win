@@ -241,6 +241,7 @@
       prejoin: ["参加前", ""],
       starting: ["起動中", ""],
       failed: ["起動失敗", "bad"],
+      stopped: ["終了済み", ""],
       "not-running": ["未起動", ""],
     };
     setValue(elements.meetStatus, ...(meetLabels[meet.connection] || ["状態不明", ""]));

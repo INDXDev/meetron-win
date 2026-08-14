@@ -139,7 +139,7 @@ https://chatgpt.com/g/g-p-PROJECT_ID/project
 ## 7. 終了する
 
 1. 常駐パネルの`終了・復元`を押す
-2. GPT参加者をMeetから退出させる
+2. ChatGPT Voice停止、GPT参加者のMeet退出、専用Meetタブの終了、音声復元が完了したことを確認する
 
 ```bash
 ./scripts/restore-audio.sh

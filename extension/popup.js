@@ -86,6 +86,7 @@ function renderLaunch(state) {
     running: "起動処理中",
     completed: "起動完了",
     failed: "起動失敗",
+    stopped: "終了済み",
   };
   launch.hidden = false;
   launchStatus.textContent = labels[state.status] || state.status;

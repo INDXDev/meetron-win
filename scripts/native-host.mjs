@@ -257,10 +257,10 @@ async function getDedicatedMeetStatus() {
     }
 
     const turnOn = page.getByRole("button", {
-      name: /マイクをオンにする|turn on microphone|unmute microphone/i,
+      name: /マイクをオン(?:にする)?|turn on microphone|unmute microphone/i,
     });
     const turnOff = page.getByRole("button", {
-      name: /マイクをオフにする|turn off microphone|mute microphone/i,
+      name: /マイクをオフ(?:にする)?|turn off microphone|mute microphone/i,
     });
     const leave = page.getByRole("button", { name: /通話から退出|leave call/i });
     const [turnOnVisible, turnOffVisible, leaveVisible, bodyText] = await Promise.all([
@@ -327,6 +327,28 @@ async function stopVoice() {
     throw new Error("ChatGPT Voiceの終了状態を確認できませんでした");
   }
   return { stopped: true, alreadyStopped: false };
+}
+
+async function leaveDedicatedMeet() {
+  const browser = await connectDedicatedChrome();
+  const page = browser
+    .contexts()
+    .flatMap((context) => context.pages())
+    .find((candidate) => candidate.url().startsWith("https://meet.google.com/"));
+  if (!page) {
+    return { left: false, alreadyLeft: true, tabClosed: true };
+  }
+
+  const leave = page.getByRole("button", { name: /通話から退出|leave call/i });
+  const leaveVisible = await locatorIsVisible(leave);
+  if (leaveVisible) {
+    await leave.first().click({ force: true, timeout: 5_000 });
+    await page.waitForTimeout(300);
+  }
+  if (!page.isClosed()) {
+    await page.close({ runBeforeUnload: false });
+  }
+  return { left: leaveVisible, alreadyLeft: !leaveVisible, tabClosed: true };
 }
 
 function projectConfigured() {
@@ -719,8 +741,23 @@ async function stopSession() {
     warnings.push(`ChatGPT Voiceを停止できませんでした: ${error.message}`);
   }
 
+  let meet = { left: false, alreadyLeft: true, tabClosed: false };
+  try {
+    meet = await leaveDedicatedMeet();
+  } catch (error) {
+    warnings.push(`GPT参加者をMeetから退出させられませんでした: ${error.message}`);
+  }
+
   const audio = await restoreAudio();
-  return { stopped: true, microphone, voice, audio, warnings };
+  const launch = getMeetingLaunchState();
+  if (launch) {
+    writeJsonAtomic(meetingStatePath, {
+      ...launch,
+      status: "stopped",
+      stoppedAt: new Date().toISOString(),
+    });
+  }
+  return { stopped: true, microphone, voice, meet, audio, warnings };
 }
 
 async function runDiagnostics() {
