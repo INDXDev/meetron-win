@@ -13,9 +13,9 @@ ChatGPT Web Voiceを、Google Meetへ`GPT-Live`という別参加者として接
 - Google Chrome、Node.js、BlackHoleは外部依存
 - 会議URL、初回マイク案内、表示名、音声デバイス、参加前ミュートを自動設定
 - ChatGPT Projectでの新規チャット作成とVoice開始を自動設定
-- 会議への参加リクエストは明示的な`--join`指定時のみ自動化
+- 拡張の`開始`と統合起動では参加リクエストまで自動化。低レベル起動では`--join`指定時のみ自動化
 - 発話抑制はProject instructionsと会議側ミュートで行う
-- 普段使うChromeのMeet上に表示する小型UIから、GPT参加者の接続確認、マイク、Voice、環境診断を遠隔操作
+- 普段使うChromeのMeet上に表示する小型UIから、GPT参加者の接続確認、マイク、Voice、セッション終了、環境診断を遠隔操作
 
 BlackHoleのバイナリやインストーラは、このリポジトリには同梱しません。
 
@@ -98,7 +98,7 @@ ChatGPT Voiceを開始し、Meetの参加リクエストまでまとめて実行
 ./scripts/set-meet-mic.sh toggle
 ```
 
-常駐パネルの`終了・復元`、または次のコマンドで、起動前に保存したmacOSの入出力へ戻せます。
+常駐パネルの`終了・復元`は、GPT参加者のミュート、ChatGPT Voice停止、Meet退出、専用Meetタブの終了、起動前に保存したmacOS入出力への復元をまとめて実行します。音声設定だけを復元する場合は次のコマンドを使います。
 
 ```bash
 ./scripts/restore-audio.sh
@@ -107,6 +107,22 @@ ChatGPT Voiceを開始し、Meetの参加リクエストまでまとめて実行
 2026年7月以降のChatGPTデスクトップアプリにもVoiceがありますが、クラウドProjectを外部から選択してVoiceを開始する公開APIはありません。このPoCでは、自動化可能で今回の実機テストが通ったChatGPT Web Voiceを利用します。
 
 ChatGPT側は[Project設定](docs/chatgpt-project.md)、動作確認は[検証チェックリスト](docs/verification.md)に従ってください。
+
+## アンインストール
+
+専用Chromeを終了してから、Native Messaging Host登録を削除します。
+
+```bash
+./scripts/uninstall.sh
+```
+
+専用Chromeプロファイル、ローカル設定、実行ログも削除する場合:
+
+```bash
+./scripts/uninstall.sh --remove-data --yes
+```
+
+保存していたmacOS音声設定を復元できない場合、アンインストールは中止され、復旧データは削除されません。元の音声デバイスを再接続してから再実行してください。最後に、普段使うChromeの`chrome://extensions`からMeeting Copilot Controlsを削除します。`--remove-data`を使わない場合は、専用Chromeからも同じ拡張を削除してください。詳しくは[MeetコントロールUI](docs/control-ui.md#アンインストール)を参照してください。
 
 ## 開発用チェック
 
