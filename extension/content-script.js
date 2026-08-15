@@ -270,15 +270,24 @@
     }
 
     const voice = hostStatus.chatgpt || {};
+    const voiceRoutingReady = voice.audioOutput?.routed === true;
+    const voiceHealthy = voice.voiceActive && voiceRoutingReady;
     setValue(
       elements.voiceStatus,
-      voice.voiceActive ? "起動中" : voice.browserConnected ? "停止中" : "未接続",
-      voice.voiceActive ? "good" : "bad",
+      voice.voiceActive
+        ? voiceRoutingReady
+          ? "起動中"
+          : "出力異常"
+        : voice.browserConnected
+          ? "停止中"
+          : "未接続",
+      voiceHealthy ? "good" : "bad",
     );
     const audio = hostStatus.audio || {};
-    setValue(elements.audioStatus, audio.ready ? "正常" : "要確認", audio.ready ? "good" : "bad");
+    const audioReady = audio.ready && (!voice.voiceActive || voiceRoutingReady);
+    setValue(elements.audioStatus, audioReady ? "正常" : "要確認", audioReady ? "good" : "bad");
 
-    const ready = meet.connection === "joined" && voice.voiceActive && audio.ready;
+    const ready = meet.connection === "joined" && voiceHealthy && audioReady;
     elements.dot.className = `status-dot ${ready ? "ready" : ""}`;
   }
 

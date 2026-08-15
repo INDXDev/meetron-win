@@ -37,7 +37,7 @@ SwitchAudioSource -c -t output
 SwitchAudioSource -t input -s "BlackHole 2ch"
 ```
 
-システム出力は変更しません。Voice開始時に専用Chromeの出力先APIを使い、ChatGPTのAudioContextと音声要素だけを`BlackHole 16ch`へ固定します。Chrome 110以降が必要です。出力先を確認できない場合は、会議へ入る前に起動処理を失敗させます。
+システム出力は変更しません。Voice開始時に専用Chromeの出力先APIを使い、ChatGPTのAudioContextと、DOM内外で生成された音声要素を`BlackHole 16ch`へ固定します。さらにChrome内部の稼働中出力を検査し、ChatGPTから内蔵スピーカーなど別デバイスへの出力が1系統でも残っていれば起動を中止します。Chrome 110以降が必要です。
 
 ## 4. GPT参加者を開く
 
@@ -142,7 +142,7 @@ ChatGPT Voiceは会議側を操作しません。会議マイクのミュート�
 ./scripts/restore-audio.sh
 ```
 
-ChatGPT以外のシステム音は`BlackHole 16ch`へ流れません。同じMacでAI音声が二重に聞こえる場合は専用Chromeの直接音が残っているため、GPT参加者をミュートして起動ログを確認してください。
+ChatGPT以外のシステム音は`BlackHole 16ch`へ流れません。同じMacでAI音声が二重に聞こえる場合は、直ちにGPT参加者をミュートして起動ログの`internalAudioOutput`を確認してください。`unexpectedOutputs`にデバイスが記録される場合、Voiceは自動終了し、開始処理全体では専用Chromeも閉じてmacOSの入力設定を復元します。
 
 ## 参考
 

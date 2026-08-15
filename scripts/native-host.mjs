@@ -216,9 +216,17 @@ async function getChatgptStatus() {
 
     const audioOutput = await page.evaluate(() => {
       const state = globalThis.__meetingCopilotAudioRouting;
-      return state
-        ? { routed: state.failures.length === 0, device: state.label }
-        : { routed: false, device: "" };
+      if (!state) return { routed: false, device: "", internalChecked: false };
+      const internalCheck = state.internalAudioOutput;
+      return {
+        routed:
+          state.failures.length === 0 &&
+          internalCheck?.checked === true &&
+          (internalCheck.unexpectedOutputs?.length || 0) === 0,
+        device: state.label,
+        internalChecked: internalCheck?.checked === true,
+        unexpectedOutputs: internalCheck?.unexpectedOutputs || [],
+      };
     });
 
     return {
@@ -666,7 +674,7 @@ async function getStatus() {
   ]);
   const setup = await getSetupStatus(audio);
   return {
-    host: { connected: true, version: "0.7.0" },
+    host: { connected: true, version: "0.7.1" },
     audio,
     chatgpt,
     dedicatedMeet,

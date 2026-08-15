@@ -102,7 +102,12 @@ await context.addInitScript(() => {
           data: {
             host: { connected: true },
             audio: { ready: true },
-            chatgpt: { browserConnected: true, voiceActive: true, microphoneOn: true },
+            chatgpt: {
+              browserConnected: true,
+              voiceActive: true,
+              microphoneOn: true,
+              audioOutput: { routed: true, internalChecked: true },
+            },
             dedicatedMeet: {
               browserConnected: true,
               connection: "joined",

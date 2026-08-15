@@ -88,6 +88,12 @@ try {
         <textarea aria-label="New chat in Meeting Copilot"></textarea>
         <button aria-label="Start voice" onclick="
           window.__testVoiceContext = new AudioContext();
+          window.__testAudioConstructorElement = new Audio();
+          window.__testCreatedAudioElement = document.createElement('audio');
+          window.__testCreatedAudioElement.srcObject = new MediaStream();
+          if (location.pathname.includes('g-p-failure')) {
+            window.__testCreatedAudioElement.setSinkId = () => Promise.reject(new Error('simulated sink failure'));
+          }
           this.setAttribute('aria-label', 'End voice');
           document.querySelector('#microphone').hidden = false;
         ">Voice</button>
@@ -127,12 +133,44 @@ try {
     result.audioOutput?.routed !== true ||
     !result.audioOutput?.device?.startsWith("BlackHole 16ch") ||
     result.audioOutput?.audioContexts !== 1 ||
+    result.audioOutput?.mediaElements !== 2 ||
+    result.audioOutput?.detachedMediaElements !== 2 ||
+    result.internalAudioOutput?.checked !== true ||
+    result.internalAudioOutput?.unexpectedOutputs?.length !== 0 ||
     !oldChatgptPage.isClosed() ||
     !meetPreserved ||
     meetPage.isClosed() ||
     chatgptPages.length !== 1
   ) {
     throw new Error(`ChatGPT tab replacement did not preserve Meet: ${JSON.stringify({ result, meetPreserved, chatgptPages: chatgptPages.length })}`);
+  }
+
+  let routingFailureDetected = false;
+  try {
+    await execFileAsync(
+      process.execPath,
+      [
+        resolve(repoRoot, "scripts/prepare-chatgpt-live.mjs"),
+        "--cdp",
+        `http://127.0.0.1:${port}`,
+        "--project-url",
+        "https://chatgpt.com/g/g-p-failure/project",
+        "--replace-tab",
+      ],
+      { cwd: repoRoot, timeout: 30_000 },
+    );
+  } catch (error) {
+    routingFailureDetected = /simulated sink failure/.test(error.stderr || error.message);
+  }
+
+  const remainingPages = context.pages();
+  if (
+    !routingFailureDetected ||
+    remainingPages.some((candidate) => candidate.url().startsWith("https://chatgpt.com/")) ||
+    !remainingPages.some((candidate) => candidate.url().startsWith("https://meet.google.com/")) ||
+    meetPage.isClosed()
+  ) {
+    throw new Error("ChatGPT Voice routing failure did not close only the Voice tab.");
   }
 } finally {
   await browser?.close().catch(() => {});
@@ -146,4 +184,4 @@ try {
   await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
-process.stdout.write("Unified profile preserves Meet while replacing the ChatGPT Voice tab.\n");
+process.stdout.write("Unified profile routes detached audio and cleans up Voice failures.\n");

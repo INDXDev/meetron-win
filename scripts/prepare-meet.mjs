@@ -230,9 +230,11 @@ if (cameraState === "on") {
 }
 if (cameraState === "unavailable") {
   const bodyText = await page.locator("body").innerText().catch(() => "");
-  if (!/カメラが見つかりません|camera (?:was )?not found|no camera/i.test(bodyText)) {
-    throw new Error("Meet camera state could not be verified before admission.");
-  }
+  cameraState = /カメラ.*(?:見つかりません|使用できません|利用できません|接続されていません)|(?:camera|webcam).*(?:not found|unavailable|not available|not detected|disconnected)/i.test(
+    bodyText,
+  )
+    ? "unavailable"
+    : "control-unavailable";
 }
 
 const microphoneButton = page.getByRole("button", {
@@ -308,7 +310,8 @@ const result = {
   microphoneOnboarding: usedMicrophone ? "dismissed" : "not shown",
   participantNameFilled: nameFilled,
   microphoneMuted: microphoneState === "off",
-  cameraDisabled: cameraState !== "on",
+  cameraDisabled: cameraState === "off" || cameraState === "unavailable",
+  cameraState,
   microphoneDevice: resolvedMicrophoneDevice,
   speakerDevice: resolvedSpeakerDevice,
   joinStatus,

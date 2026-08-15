@@ -11,15 +11,22 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 meeting_url="$1"
 audio_configured=0
 launch_completed=0
+dedicated_launch_started=0
 environment_meet_cdp_port="${MEETING_COPILOT_CDP_PORT:-}"
 
-restore_audio_on_failure() {
-  if [ "$audio_configured" -eq 1 ] && [ "$launch_completed" -ne 1 ]; then
-    printf '[INFO] Restoring the previous macOS audio defaults after launch failure.\n' >&2
-    "$repo_root/scripts/restore-audio.sh" >/dev/null 2>&1 || true
+cleanup_on_failure() {
+  if [ "$launch_completed" -ne 1 ]; then
+    if [ "$dedicated_launch_started" -eq 1 ]; then
+      printf '[INFO] Closing the dedicated browser after launch failure.\n' >&2
+      "$repo_root/scripts/close-dedicated-chrome.sh" >/dev/null 2>&1 || true
+    fi
+    if [ "$audio_configured" -eq 1 ]; then
+      printf '[INFO] Restoring the previous macOS audio defaults after launch failure.\n' >&2
+      "$repo_root/scripts/restore-audio.sh" >/dev/null 2>&1 || true
+    fi
   fi
 }
-trap restore_audio_on_failure EXIT
+trap cleanup_on_failure EXIT
 
 if [ -f "$repo_root/.meeting-copilot.env" ]; then
   set -a
@@ -33,6 +40,7 @@ fi
 "$repo_root/scripts/install-control-ui.sh" --quiet
 audio_configured=1
 "$repo_root/scripts/configure-audio.sh"
+dedicated_launch_started=1
 "$repo_root/scripts/open-chatgpt-live.sh" --restart-profile
 "$repo_root/scripts/open-gpt-participant.sh" --join "$meeting_url"
 "$repo_root/scripts/set-meet-mic.sh" --assume-before muted --wait 60 unmute

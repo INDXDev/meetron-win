@@ -110,6 +110,12 @@ else
   fail 'audio routing restore help'
 fi
 
+if "$repo_root/scripts/close-dedicated-chrome.sh" --help >/dev/null; then
+  pass 'dedicated Chrome cleanup help'
+else
+  fail 'dedicated Chrome cleanup help'
+fi
+
 if "$repo_root/scripts/uninstall.sh" --help >/dev/null; then
   pass 'uninstaller help'
 else
@@ -240,6 +246,11 @@ elif [ -x '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' ]; then
     pass 'unified profile preserves Meet during Voice restart'
   else
     fail 'unified profile Voice restart isolation'
+  fi
+  if node "$repo_root/tests/prepare-meet-test.mjs" >/dev/null; then
+    pass 'Meet camera state handling'
+  else
+    fail 'Meet camera state handling'
   fi
 else
   pass 'extension panel and popup UI browser test (skipped: Chrome not installed)'

@@ -72,7 +72,7 @@
 - [ ] 専用ChromeからChatGPTの直接音が聞こえない
 - [ ] システム通知など余計な音声が会議へ送られない
 
-失敗時は起動ログでChatGPT出力が`BlackHole 16ch`へ設定されたことと、GPT参加者のMicrophoneが`BlackHole 16ch`であることを確認します。
+失敗時は起動ログで`audioOutput.routed`が`true`、`internalAudioOutput.unexpectedOutputs`が空であることと、GPT参加者のMicrophoneが`BlackHole 16ch`であることを確認します。
 
 ## 5. ループテスト
 

@@ -85,11 +85,91 @@ if (!outputDevice) {
   throw new Error(`ChatGPT Voice output device was not found: ${options.outputDevice}`);
 }
 
+function normalizedDeviceName(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+async function inspectChromeAudioOutputs(browserInstance, browserContext, expectedDeviceLabel) {
+  const session = await browserInstance.newBrowserCDPSession();
+  const pagePromise = browserContext.waitForEvent("page", {
+    predicate: (candidate) => candidate.url().startsWith("chrome://media-internals"),
+    timeout: 5_000,
+  });
+  let internalPage;
+  try {
+    await session.send("Target.createTarget", { url: "chrome://media-internals/" });
+    internalPage = await pagePromise;
+    await internalPage.locator("#audio-output-controller-list").waitFor({
+      state: "attached",
+      timeout: 5_000,
+    });
+    await internalPage.waitForTimeout(500);
+
+    const controllerCount = await internalPage
+      .locator("#audio-output-controller-list > .tree-item")
+      .count();
+    const controllers = [];
+    for (let index = 0; index < controllerCount; index += 1) {
+      const properties = await internalPage.evaluate((controllerIndex) => {
+        const controller = document.querySelectorAll(
+          "#audio-output-controller-list > .tree-item",
+        )[controllerIndex];
+        controller?.querySelector(".tree-item-header")?.click();
+        return Object.fromEntries(
+          [...document.querySelectorAll("#audio-property-table tbody tr")].map((row) => {
+            const name = row.cells[0]?.innerText.trim() || "";
+            const rawValue = row.cells[1]?.innerText.trim() || "";
+            let value = rawValue;
+            try {
+              value = JSON.parse(rawValue);
+            } catch {
+              // Media Internals normally renders values as JSON, but retain raw text if it changes.
+            }
+            return [name, value];
+          }),
+        );
+      }, index);
+      controllers.push(properties);
+    }
+
+    const expectedDevice = normalizedDeviceName(expectedDeviceLabel).replace(/virtual$/, "");
+    const activeChatgptOutputs = controllers.filter(
+      (controller) =>
+        String(controller.status).toLowerCase() === "started" &&
+        /chatgpt/i.test(String(controller.web_contents_title || "")),
+    );
+    const unexpectedOutputs = activeChatgptOutputs.filter((controller) => {
+      const actualDevice = normalizedDeviceName(controller.device_id);
+      return !actualDevice.includes(expectedDevice);
+    });
+
+    return {
+      checked: true,
+      expectedDevice: expectedDeviceLabel,
+      activeChatgptOutputs: activeChatgptOutputs.map((controller) => ({
+        deviceId: controller.device_id || "",
+        status: controller.status || "",
+        title: controller.web_contents_title || "",
+      })),
+      unexpectedOutputs: unexpectedOutputs.map((controller) => ({
+        deviceId: controller.device_id || "",
+        status: controller.status || "",
+        title: controller.web_contents_title || "",
+      })),
+    };
+  } finally {
+    await internalPage?.close({ runBeforeUnload: false }).catch(() => {});
+    await session.detach().catch(() => {});
+  }
+}
+
 await context.addInitScript(({ sinkId, label }) => {
   const state = {
     sinkId,
     label,
     contexts: new Set(),
+    mediaElements: new Set(),
+    routeAttempts: 0,
     failures: [],
   };
   Object.defineProperty(globalThis, "__meetingCopilotAudioRouting", {
@@ -97,12 +177,16 @@ await context.addInitScript(({ sinkId, label }) => {
     value: state,
   });
 
-  const recordFailure = (error) => {
-    state.failures.push(error instanceof Error ? error.message : String(error));
-  };
   const routeMediaElement = (element) => {
-    if (typeof element.setSinkId !== "function" || element.sinkId === sinkId) return Promise.resolve();
-    return element.setSinkId(sinkId).catch(recordFailure);
+    state.mediaElements.add(element);
+    state.routeAttempts += 1;
+    if (typeof element.setSinkId !== "function" || element.sinkId === sinkId) {
+      return Promise.resolve();
+    }
+    return element.setSinkId(sinkId);
+  };
+  const routeWithoutUnhandledRejection = (element) => {
+    void routeMediaElement(element).catch(() => {});
   };
 
   const NativeAudioContext = globalThis.AudioContext || globalThis.webkitAudioContext;
@@ -118,15 +202,58 @@ await context.addInitScript(({ sinkId, label }) => {
     if (globalThis.webkitAudioContext === NativeAudioContext) globalThis.webkitAudioContext = RoutedAudioContext;
   }
 
+  const NativeAudio = globalThis.Audio;
+  if (typeof NativeAudio === "function") {
+    function RoutedAudio(...audioArguments) {
+      const element = new NativeAudio(...audioArguments);
+      routeWithoutUnhandledRejection(element);
+      return element;
+    }
+    Object.setPrototypeOf(RoutedAudio, NativeAudio);
+    RoutedAudio.prototype = NativeAudio.prototype;
+    globalThis.Audio = RoutedAudio;
+  }
+
+  const nativeCreateElement = Document.prototype.createElement;
+  Document.prototype.createElement = function routedCreateElement(...createArguments) {
+    const element = nativeCreateElement.apply(this, createArguments);
+    if (element instanceof HTMLMediaElement) routeWithoutUnhandledRejection(element);
+    return element;
+  };
+
+  const nativeCreateElementNS = Document.prototype.createElementNS;
+  Document.prototype.createElementNS = function routedCreateElementNS(...createArguments) {
+    const element = nativeCreateElementNS.apply(this, createArguments);
+    if (element instanceof HTMLMediaElement) routeWithoutUnhandledRejection(element);
+    return element;
+  };
+
+  const srcObjectDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLMediaElement.prototype,
+    "srcObject",
+  );
+  if (srcObjectDescriptor?.get && srcObjectDescriptor?.set && srcObjectDescriptor.configurable) {
+    Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
+      ...srcObjectDescriptor,
+      get: srcObjectDescriptor.get,
+      set(value) {
+        srcObjectDescriptor.set.call(this, value);
+        routeWithoutUnhandledRejection(this);
+      },
+    });
+  }
+
   const nativePlay = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function routedPlay(...playArguments) {
     return routeMediaElement(this).then(() => nativePlay.apply(this, playArguments));
   };
 
   const routeAddedMedia = (node) => {
-    if (node instanceof HTMLMediaElement) void routeMediaElement(node);
+    if (node instanceof HTMLMediaElement) routeWithoutUnhandledRejection(node);
     if (node instanceof Element) {
-      for (const element of node.querySelectorAll("audio, video")) void routeMediaElement(element);
+      for (const element of node.querySelectorAll("audio, video")) {
+        routeWithoutUnhandledRejection(element);
+      }
     }
   };
   new MutationObserver((records) => {
@@ -199,42 +326,83 @@ const startVoice = page.getByRole("button", {
   name: /^(音声を開始する|Start voice)$/i,
 });
 await startVoice.waitFor({ state: "visible", timeout: 10_000 });
-await startVoice.click();
+let voiceStartAttempted = false;
+let endVoice;
+let microphoneOn;
+let audioOutput;
+let internalAudioOutput;
+try {
+  voiceStartAttempted = true;
+  await startVoice.click();
 
-const endVoice = page.getByRole("button", {
-  name: /^(音声を終了する|End voice)$/i,
-});
-await endVoice.waitFor({ state: "visible", timeout: 30_000 });
+  endVoice = page.getByRole("button", {
+    name: /^(音声を終了する|End voice)$/i,
+  });
+  await endVoice.waitFor({ state: "visible", timeout: 30_000 });
 
-const microphoneOn = page.getByRole("button", {
-  name: /^(マイクをオフにする|Turn off microphone)$/i,
-});
+  microphoneOn = page.getByRole("button", {
+    name: /^(マイクをオフにする|Turn off microphone)$/i,
+  });
 
-const audioOutput = await page.evaluate(async () => {
-  const state = globalThis.__meetingCopilotAudioRouting;
-  if (!state) return { routed: false, error: "Audio routing was not initialized." };
-  const mediaElements = [...document.querySelectorAll("audio, video")];
-  const activeContexts = [...state.contexts].filter((audioContext) => audioContext.state !== "closed");
-  const results = await Promise.allSettled([
-    ...activeContexts.map((audioContext) => audioContext.setSinkId(state.sinkId)),
-    ...mediaElements.map((element) => element.setSinkId(state.sinkId)),
-  ]);
-  const failures = [
-    ...state.failures,
-    ...results.filter((result) => result.status === "rejected").map((result) => result.reason?.message || String(result.reason)),
-  ];
-  return {
-    routed: failures.length === 0,
-    device: state.label,
-    audioContexts: activeContexts.length,
-    closedAudioContexts: state.contexts.size - activeContexts.length,
-    mediaElements: mediaElements.length,
-    failures,
-  };
-});
+  await page.waitForTimeout(750);
+  audioOutput = await page.evaluate(async () => {
+    const state = globalThis.__meetingCopilotAudioRouting;
+    if (!state) return { routed: false, error: "Audio routing was not initialized." };
+    const mediaElements = [...state.mediaElements];
+    const activeContexts = [...state.contexts].filter(
+      (audioContext) => audioContext.state !== "closed",
+    );
+    const results = await Promise.allSettled([
+      ...activeContexts.map((audioContext) => audioContext.setSinkId(state.sinkId)),
+      ...mediaElements.map((element) => element.setSinkId(state.sinkId)),
+    ]);
+    const failures = results
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason?.message || String(result.reason));
+    state.failures = failures;
+    return {
+      routed: failures.length === 0,
+      device: state.label,
+      audioContexts: activeContexts.length,
+      closedAudioContexts: state.contexts.size - activeContexts.length,
+      mediaElements: mediaElements.length,
+      detachedMediaElements: mediaElements.filter((element) => !element.isConnected).length,
+      routeAttempts: state.routeAttempts,
+      failures,
+    };
+  });
 
-if (!audioOutput.routed) {
-  throw new Error(`ChatGPT Voice output could not be routed to ${outputDevice.label}: ${audioOutput.failures?.join(" / ") || audioOutput.error}`);
+  if (!audioOutput.routed) {
+    throw new Error(
+      `ChatGPT Voice output could not be routed to ${outputDevice.label}: ${audioOutput.failures?.join(" / ") || audioOutput.error}`,
+    );
+  }
+
+  internalAudioOutput = await inspectChromeAudioOutputs(browser, context, outputDevice.label);
+  await page.evaluate((validation) => {
+    const state = globalThis.__meetingCopilotAudioRouting;
+    if (state) state.internalAudioOutput = validation;
+  }, internalAudioOutput);
+  if (internalAudioOutput.unexpectedOutputs.length > 0) {
+    const devices = internalAudioOutput.unexpectedOutputs
+      .map((output) => output.deviceId || "unknown device")
+      .join(", ");
+    throw new Error(
+      `Chrome detected active ChatGPT audio outside ${outputDevice.label}: ${devices}`,
+    );
+  }
+} catch (error) {
+  if (voiceStartAttempted && !page.isClosed()) {
+    const stopButton = page.getByRole("button", {
+      name: /^(音声を終了する|End voice)$/i,
+    });
+    if ((await stopButton.count().catch(() => 0)) > 0) {
+      await stopButton.first().click({ force: true, timeout: 5_000 }).catch(() => {});
+      await stopButton.first().waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
+    }
+    await page.close({ runBeforeUnload: false }).catch(() => {});
+  }
+  throw error;
 }
 
 const result = {
@@ -245,6 +413,7 @@ const result = {
   replacedTab: options.replaceTab,
   microphoneOn: await microphoneOn.isVisible(),
   audioOutput,
+  internalAudioOutput,
   title: await page.title(),
 };
 
