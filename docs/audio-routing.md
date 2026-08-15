@@ -6,22 +6,17 @@
 | --- | --- | --- |
 | ユーザー本人 | 物理マイク | ヘッドホン |
 | GPT参加者（Meet/Zoom） | BlackHole 16ch | BlackHole 2ch |
-| ChatGPT Voice | BlackHole 2ch | Meeting Copilot Output |
+| ChatGPT Voice | BlackHole 2ch | BlackHole 16ch（専用Chrome内で固定） |
 
-`Meeting Copilot Output`は、ヘッドホンと`BlackHole 16ch`を束ねたMulti-Output Deviceです。ここには`BlackHole 2ch`を絶対に含めないでください。
+ChatGPT Voiceの出力は専用Chrome内で`BlackHole 16ch`だけへ送ります。macOSのシステム出力は変更しないため、同じMacでは専用Chromeから直接音が出ず、通常ChromeのMeetを経由したAI音声だけをスピーカーまたはヘッドホンで聞きます。
 
-## 1. Multi-Output Deviceを作る
+## 1. ユーザー本人の出力を確認する
 
-1. ヘッドホンを接続する。PoCでは有線またはUSBヘッドホンを推奨する
-2. `/Applications/Utilities/Audio MIDI Setup.app`を開く
-3. 左下の`+`から`Create Multi-Output Device`を選ぶ
-4. 名前を`Meeting Copilot Output`へ変更する
-5. 使用デバイスとしてヘッドホンと`BlackHole 16ch`だけを選ぶ
-6. `Primary Device`で2chの物理出力を選ぶ
-7. Primary Deviceではないデバイス側に`Drift Correction`が表示される場合は有効にする
-8. サンプルレートは、選択できる場合は両方を`48.0 kHz`へそろえる
+1. スピーカーまたはヘッドホンを接続する
+2. macOSのシステム出力が、そのスピーカーまたはヘッドホンになっていることを確認する
+3. 普段使うChromeのMeetでも、Speakerに同じ物理出力を選ぶ
 
-AirPodsなどBluetooth機器はクロックやサンプルレートの都合でMulti-Outputが不安定になる場合があります。音切れや無音が出るときは、まず有線/USBヘッドホンで経路を確立してください。
+バージョン0.6以前で作成した`Meeting Copilot Output`は使用しません。残しても問題ありませんが、不要ならAudio MIDI設定から削除できます。
 
 ## 2. 変更前のデバイスを保存する
 
@@ -34,16 +29,15 @@ SwitchAudioSource -c -t output
 
 `configure-audio.sh`と拡張の開始操作は、初回切り替え前のデバイス名を`.meeting-copilot-runtime/audio-original.json`へ自動保存します。
 
-## 3. ChatGPT用のシステム音声を設定する
+## 3. ChatGPT用の入力を設定する
 
-拡張の初期セットアップでは`音声経路を設定`を押すと、次の切り替えを実行します。通常利用時も`開始`を押した後、ChatGPT Voiceを開く前に自動設定されます。
+拡張の初期セットアップでは`ChatGPT入力を設定`を押すと、次の切り替えを実行します。通常利用時も`開始`を押した後、ChatGPT Voiceを開く前に自動設定されます。
 
 ```bash
 SwitchAudioSource -t input -s "BlackHole 2ch"
-SwitchAudioSource -t output -s "Meeting Copilot Output"
 ```
 
-ChatGPT Web Voiceは、Voice開始時のシステム既定デバイスを使います。切り替え後にすでにVoiceが動いている場合は、Voice会話を終了して開始し直します。
+システム出力は変更しません。Voice開始時に専用Chromeの出力先APIを使い、ChatGPTのAudioContextと音声要素だけを`BlackHole 16ch`へ固定します。Chrome 110以降が必要です。出力先を確認できない場合は、会議へ入る前に起動処理を失敗させます。
 
 ## 4. GPT参加者を開く
 
@@ -109,6 +103,7 @@ Zoomのリンクがデスクトップアプリを開こうとした場合は、�
 
 - `Meeting Copilot` Projectを開く
 - 毎回新しいチャットを作る
+- ChatGPT Voice出力を`BlackHole 16ch`へ固定する
 - ChatGPT Voiceを開始する
 
 会議中のVoice再起動には常駐パネルを使います。ChatGPTタブだけを置き換え、Meetタブと参加状態を維持します。`--restart-profile`は共通Chrome全体を終了するため、Meet参加中には使わないでください。
@@ -118,7 +113,7 @@ Zoomのリンクがデスクトップアプリを開こうとした場合は、�
 1. [ChatGPT Project設定](chatgpt-project.md)の`Meeting Copilot` Projectを開く
 2. 新しいVoice会話を開始する
 3. GPT参加者のspeakerテスト音または別参加者の発話がChatGPTへ届くことを確認する
-4. ChatGPTの短い応答がヘッドホンで聞こえることを確認する
+4. ChatGPTの短い応答が通常ChromeのMeet経由で聞こえることを確認する
 5. GPT参加者の入力レベルが動くことを確認してから、会議マイクをアンミュートする
 
 ChatGPT Voiceは会議側を操作しません。会議マイクのミュートが、意図しない発話を外へ出さない最終防御です。
@@ -133,11 +128,10 @@ ChatGPT Voiceは会議側を操作しません。会議マイクのミュート�
 
 発生したらGPT参加者の会議マイクを直ちにミュートし、次を確認します。
 
-1. `Meeting Copilot Output`に`BlackHole 2ch`が含まれていない
-2. GPT参加者のspeakerが`BlackHole 2ch`
-3. GPT参加者のmicrophoneが`BlackHole 16ch`
-4. ChatGPT入力が`BlackHole 2ch`
-5. ChatGPT出力が`Meeting Copilot Output`
+1. GPT参加者のspeakerが`BlackHole 2ch`
+2. GPT参加者のmicrophoneが`BlackHole 16ch`
+3. ChatGPT入力が`BlackHole 2ch`
+4. ChatGPT出力が専用Chrome内で`BlackHole 16ch`へ設定されている
 
 ## 7. 終了と復元
 
@@ -148,10 +142,9 @@ ChatGPT Voiceは会議側を操作しません。会議マイクのミュート�
 ./scripts/restore-audio.sh
 ```
 
-Multi-Output Deviceをシステム出力にしている間は、ChatGPT以外のシステム音も`BlackHole 16ch`へ流れます。通知音などを会議へ出したくない場合は、集中モードを有効にしてください。
+ChatGPT以外のシステム音は`BlackHole 16ch`へ流れません。同じMacでAI音声が二重に聞こえる場合は専用Chromeの直接音が残っているため、GPT参加者をミュートして起動ログを確認してください。
 
 ## 参考
 
-- [Apple: Play audio through multiple devices at once in Audio MIDI Setup on Mac](https://support.apple.com/guide/audio-midi-setup/ams7c093f372/mac)
+- [Chrome Developers: Change the destination output device in Web Audio](https://developer.chrome.com/blog/audiocontext-setsinkid/)
 - [Google Meet: Tips to manage your audio and video](https://support.google.com/a/users/answer/12018158)
-- [BlackHole: Multi Output Device](https://github.com/ExistentialAudio/BlackHole/wiki/Multi-Output-Device)

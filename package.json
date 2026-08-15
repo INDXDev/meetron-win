@@ -1,6 +1,6 @@
 {
   "name": "meeting-copilot",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Local macOS bridge between ChatGPT Voice and web meetings",
   "license": "GPL-3.0-only",

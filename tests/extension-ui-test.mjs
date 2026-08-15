@@ -45,7 +45,6 @@ await context.addInitScript(() => {
                   requiredDevices: {
                     "BlackHole 2ch": true,
                     "BlackHole 16ch": true,
-                    "Meeting Copilot Output": true,
                   },
                 },
                 project: { configured: false, url: "" },
@@ -70,8 +69,7 @@ await context.addInitScript(() => {
                   devicesReady: false,
                   requiredDevices: {
                     "BlackHole 2ch": true,
-                    "BlackHole 16ch": true,
-                    "Meeting Copilot Output": false,
+                    "BlackHole 16ch": false,
                   },
                 },
                 project: { configured: false, url: "" },
@@ -266,7 +264,7 @@ const setupResult = await setupPopup.evaluate(() => ({
   launchHidden: document.querySelector("[data-launch-view]").hidden,
   setupHidden: document.querySelector("[data-setup-view]").hidden,
   step: document.querySelector("[data-step-count]").textContent,
-  outputStatus: document.querySelector('[data-device-label="Meeting Copilot Output"]').textContent,
+  outputStatus: document.querySelector('[data-device-label="BlackHole 16ch"]').textContent,
   nextDisabled: document.querySelector("[data-next-step]").disabled,
 }));
 if (

@@ -27,9 +27,10 @@ BlackHoleのバイナリやインストーラは、このリポジトリには�
   -> ChatGPT Voice input
 
 ChatGPT Voice output
-  -> Multi-Output Device: headphones + BlackHole 16ch
+  -> dedicated Chrome output: BlackHole 16ch
   -> GPT参加者のmic: BlackHole 16ch
   -> 会議
+  -> 通常ChromeのMeetからヘッドホンへ
 ```
 
 `BlackHole 2ch`を入力経路、`BlackHole 16ch`を出力経路に分けることで、ChatGPTの発話が自分の入力へ戻るループを防ぎます。
@@ -53,7 +54,6 @@ README.mdとdocs/getting-started.mdを先に読み、最初に環境診断と作
 - macOSの再起動
 - Chromeでのデベロッパーモード有効化と拡張機能の読み込み
 - GoogleまたはChatGPTへのログインと2段階認証
-- Audio MIDI設定でのMulti-Output Device作成
 - ChatGPT Projectの作成とInstructions設定
 - テスト会議への参加、参加許可、音声確認
 
@@ -67,7 +67,7 @@ README.mdとdocs/getting-started.mdを先に読み、最初に環境診断と作
 - HomebrewやNode.jsが不足している場合、実行内容を説明し、利用者の承認後にインストールを進める
 - 実行内容を事前確認し、利用者の同意後に音声依存のインストールを開始する
 - Native Messaging Hostを登録し、通常Chromeと専用Chromeで選ぶ正確な`extension`パスを案内する
-- 初期セットアップ画面や必要なmacOS画面を開く
+- 初期セットアップ画面や必要なブラウザー画面を開く
 - 再起動後に環境を再診断し、不足設定や接続エラーを調査する
 - ローカルテストを実行し、Meet開始前の準備状況を確認する
 
@@ -78,7 +78,6 @@ README.mdとdocs/getting-started.mdを先に読み、最初に環境診断と作
 - 管理者パスワード、Touch ID、Google・ChatGPTのパスワード、2段階認証コードを、AIチャットではなく表示されたmacOSまたはサービスの画面へ直接入力する
 - BlackHole導入後にmacOSを再起動し、再起動完了をAIへ伝える
 - 普段使うChromeと専用Chromeでデベロッパーモードを有効にし、AIが示した`extension`フォルダを「パッケージ化されていない拡張機能」として読み込む
-- Audio MIDI設定で、使用するヘッドホンと`BlackHole 16ch`を含む`Meeting Copilot Output`を作成する
 - 専用ChromeでGoogleとChatGPTへログインし、ChatGPT ProjectとInstructionsを確認する
 - 組織の規定と参加者への通知・同意要件を確認し、必要ならMeet側で`GPT-Live`の参加を許可する
 - 機密情報を含まないテスト会議で、別端末を使って音声とミュートを最終確認する
@@ -91,7 +90,7 @@ README.mdとdocs/getting-started.mdを先に読み、最初に環境診断と作
 2. 利用者がライセンスを確認し、必要な管理者認証を行う
 3. BlackHole導入後、利用者がmacOSを再起動する
 4. 同じAIとの会話を開き、`再起動しました。続きから確認して`と伝える
-5. AIの案内に沿って、利用者が音声デバイス、Chrome拡張、Google・ChatGPTログインを設定する
+5. AIの案内に沿って、利用者がChrome拡張、Google・ChatGPTログインを設定する
 6. AIが診断とローカルテストを実行する
 7. 利用者がテスト会議で最終確認する
 
@@ -142,7 +141,7 @@ ChatGPTの`Meeting Copilot` Projectで毎回新しいチャットを作成し、
 ./scripts/open-chatgpt-live.sh --restart-profile
 ```
 
-初回だけ、Meetと共用する専用ChromeでChatGPTへログインし、同じコマンドを再実行します。Project URLはローカル専用の`.meeting-copilot.env`へ保存し、リポジトリ配布には含めません。ChatGPT Webの入力はシステム既定の`BlackHole 2ch`、出力は`Meeting Copilot Output`を使います。
+初回だけ、Meetと共用する専用ChromeでChatGPTへログインし、同じコマンドを再実行します。Project URLはローカル専用の`.meeting-copilot.env`へ保存し、リポジトリ配布には含めません。ChatGPT Webの入力はシステム既定の`BlackHole 2ch`を使い、専用Chrome内のVoice出力だけを`BlackHole 16ch`へ固定します。macOSのシステム出力は変更しません。
 
 ChatGPT Voiceを開始し、Meetの参加リクエストまでまとめて実行する場合:
 

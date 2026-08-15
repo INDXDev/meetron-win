@@ -40,6 +40,70 @@ else
   fail 'audio routing setup help'
 fi
 
+fake_audio_source="$temp_dir/SwitchAudioSource"
+fake_audio_state="$temp_dir/fake-audio-state"
+fake_audio_runtime="$temp_dir/fake-audio-runtime"
+printf 'Physical microphone\nPhysical output\n' > "$fake_audio_state"
+cat > "$fake_audio_source" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+case "$*" in
+  -a)
+    printf 'BlackHole 2ch\nBlackHole 16ch\nPhysical microphone\nPhysical output\n'
+    ;;
+  '-c -t input')
+    sed -n '1p' "$FAKE_AUDIO_STATE"
+    ;;
+  '-c -t output')
+    sed -n '2p' "$FAKE_AUDIO_STATE"
+    ;;
+  '-t input -s BlackHole 2ch')
+    { printf 'BlackHole 2ch\n'; sed -n '2p' "$FAKE_AUDIO_STATE"; } > "$FAKE_AUDIO_STATE.tmp"
+    mv "$FAKE_AUDIO_STATE.tmp" "$FAKE_AUDIO_STATE"
+    ;;
+  '-t input -s Physical microphone')
+    { printf 'Physical microphone\n'; sed -n '2p' "$FAKE_AUDIO_STATE"; } > "$FAKE_AUDIO_STATE.tmp"
+    mv "$FAKE_AUDIO_STATE.tmp" "$FAKE_AUDIO_STATE"
+    ;;
+  '-t output -s '*)
+    printf 'System output must not be changed.\n' >&2
+    exit 90
+    ;;
+  *)
+    printf 'Unexpected SwitchAudioSource arguments: %s\n' "$*" >&2
+    exit 2
+    ;;
+esac
+EOF
+chmod +x "$fake_audio_source"
+if configure_result="$(FAKE_AUDIO_STATE="$fake_audio_state" \
+  MEETING_COPILOT_SWITCH_AUDIO_SOURCE="$fake_audio_source" \
+  MEETING_COPILOT_RUNTIME_DIR="$fake_audio_runtime" \
+  "$repo_root/scripts/configure-audio.sh")" &&
+  [ "$(sed -n '2p' "$fake_audio_state")" = 'Physical output' ] &&
+  node -e '
+    const fs = require("node:fs");
+    const result = JSON.parse(process.argv[1]);
+    const state = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+    if (!result.outputUnchanged || result.output !== "Physical output" || state.outputChanged !== false) process.exit(1);
+  ' "$configure_result" "$fake_audio_runtime/audio-original.json"; then
+  pass 'audio setup keeps the system output unchanged'
+else
+  fail 'audio setup keeps the system output unchanged'
+fi
+
+if FAKE_AUDIO_STATE="$fake_audio_state" \
+  MEETING_COPILOT_SWITCH_AUDIO_SOURCE="$fake_audio_source" \
+  MEETING_COPILOT_RUNTIME_DIR="$fake_audio_runtime" \
+  "$repo_root/scripts/restore-audio.sh" >/dev/null &&
+  [ "$(sed -n '1p' "$fake_audio_state")" = 'Physical microphone' ] &&
+  [ "$(sed -n '2p' "$fake_audio_state")" = 'Physical output' ] &&
+  [ ! -f "$fake_audio_runtime/audio-original.json" ]; then
+  pass 'audio restore restores only the changed input'
+else
+  fail 'audio restore preserves the unchanged system output'
+fi
+
 if "$repo_root/scripts/restore-audio.sh" --help >/dev/null; then
   pass 'audio routing restore help'
 else

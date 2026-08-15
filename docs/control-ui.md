@@ -43,7 +43,7 @@ Chrome 137以降の公式ビルドでは`--load-extension`が削除されてい�
 拡張を開くとNative Hostへ接続し、設定状況を確認します。不足がある場合は次の4ステップがポップアップ内に自動表示されます。
 
 1. Native Messaging Hostとのローカル接続
-2. BlackHoleと`Meeting Copilot Output`、現在の音声経路
+2. BlackHole 2ch/16chとChatGPT入力経路
 3. 共通の専用Chrome、拡張読込、Googleログイン
 4. 同じ専用ChromeでのChatGPT Project URLとログイン
 

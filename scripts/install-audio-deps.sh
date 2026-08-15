@@ -141,6 +141,5 @@ Next steps
 2. Run ./scripts/check-env.sh.
 3. Follow docs/audio-routing.md.
 
-The installer does not create a Multi-Output Device or change the current
-system input/output devices.
+The installer does not change the current system input/output devices.
 EOF

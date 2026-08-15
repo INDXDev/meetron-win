@@ -157,12 +157,11 @@ async function getAudioStatus() {
       .filter(Boolean);
     const currentInput = input.stdout.trim();
     const currentOutput = output.stdout.trim();
-    const requiredDevices = ["BlackHole 2ch", "BlackHole 16ch", "Meeting Copilot Output"];
+    const requiredDevices = ["BlackHole 2ch", "BlackHole 16ch"];
 
     return {
       ready:
         /BlackHole 2ch/i.test(currentInput) &&
-        /Meeting Copilot Output/i.test(currentOutput) &&
         requiredDevices.every((name) => deviceNames.includes(name)),
       switchAudioSourceInstalled: true,
       input: currentInput,
@@ -215,11 +214,19 @@ async function getChatgptStatus() {
       name: /^(マイクをオフにする|Turn off microphone)$/i,
     });
 
+    const audioOutput = await page.evaluate(() => {
+      const state = globalThis.__meetingCopilotAudioRouting;
+      return state
+        ? { routed: state.failures.length === 0, device: state.label }
+        : { routed: false, device: "" };
+    });
+
     return {
       browserConnected: true,
       voiceActive: (await endVoice.count()) > 0 && (await endVoice.first().isVisible()),
       microphoneOn:
         (await microphoneOn.count()) > 0 && (await microphoneOn.first().isVisible()),
+      audioOutput,
       title: await page.title(),
     };
   } catch (error) {
@@ -458,7 +465,7 @@ function dedicatedExtensionInstalled() {
 async function getSetupStatus(audioStatus = null) {
   const audio = audioStatus || await getAudioStatus();
   const confirmations = readSetupState();
-  const requiredDevices = ["BlackHole 2ch", "BlackHole 16ch", "Meeting Copilot Output"];
+  const requiredDevices = ["BlackHole 2ch", "BlackHole 16ch"];
   const audioDevicesReady = requiredDevices.every((name) => audio.devices.includes(name));
   const projectUrl = getProjectUrl();
   const projectIsConfigured = Boolean(projectUrl) && projectConfigured();
@@ -515,18 +522,6 @@ async function configureAudio() {
   } catch {
     return { ready: true, output: result.stdout.trim() };
   }
-}
-
-async function openAudioMidiSetup() {
-  const application = [
-    "/System/Applications/Utilities/Audio MIDI Setup.app",
-    "/Applications/Utilities/Audio MIDI Setup.app",
-  ].find(existsSync);
-  if (!application) {
-    throw new Error("Audio MIDI Setup.appが見つかりません");
-  }
-  await run("/usr/bin/open", [application], 10_000);
-  return { opened: true };
 }
 
 function openDedicatedChromeSetup() {
@@ -671,7 +666,7 @@ async function getStatus() {
   ]);
   const setup = await getSetupStatus(audio);
   return {
-    host: { connected: true, version: "0.6.0" },
+    host: { connected: true, version: "0.7.0" },
     audio,
     chatgpt,
     dedicatedMeet,
@@ -784,8 +779,6 @@ async function handleMessage(message) {
       return saveProjectUrl(message.payload);
     case "setup.audio.configure":
       return configureAudio();
-    case "setup.open.audio-midi":
-      return openAudioMidiSetup();
     case "setup.open.dedicated-chrome":
       return openDedicatedChromeSetup();
     case "setup.open.chatgpt":

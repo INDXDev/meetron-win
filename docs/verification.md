@@ -8,7 +8,7 @@
 2. GPT参加者: ChatGPT Voiceと共用する専用Chromeプロファイルから`GPT-Live`として参加
 3. 確認者: 別のPCまたはスマートフォンから参加し、GPT音声が実際に会議へ届くか確認
 
-同じMacだけで確認すると、ヘッドホンのモニター音と会議へ送信された音を区別しにくいため、確認者は別端末にします。
+同じMacではChatGPTの直接音を出さず、通常ChromeのMeetを経由した音だけを聞きます。会議へ正しく送信されたことを確実に確認するため、確認者は別端末にします。
 
 ## 0. 安全確認
 
@@ -29,7 +29,6 @@
 - [ ] `BlackHole 16ch`が表示される
 - [ ] Node.jsとnpmが検出される
 - [ ] Google Chromeが検出される
-- [ ] `Meeting Copilot Output`をAudio MIDI Setupで作成済み
 
 ## 2. GPT参加者の起動
 
@@ -69,10 +68,11 @@
 
 - [ ] 確認者の別端末でChatGPTの音声が聞こえる
 - [ ] GPT参加者の入力メーターがChatGPT発話中だけ動く
-- [ ] ヘッドホンでもChatGPTの音声をモニターできる
+- [ ] 同じMacでは通常ChromeのMeet経由でChatGPT音声を1回だけ聞ける
+- [ ] 専用ChromeからChatGPTの直接音が聞こえない
 - [ ] システム通知など余計な音声が会議へ送られない
 
-失敗時はChatGPT出力が`Meeting Copilot Output`、Multi-Outputの構成要素がヘッドホンと`BlackHole 16ch`、GPT参加者のMicrophoneが`BlackHole 16ch`であることを確認します。
+失敗時は起動ログでChatGPT出力が`BlackHole 16ch`へ設定されたことと、GPT参加者のMicrophoneが`BlackHole 16ch`であることを確認します。
 
 ## 5. ループテスト
 

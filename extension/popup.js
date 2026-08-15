@@ -185,7 +185,7 @@ function renderSetup() {
   }
 
   const requiredDevices = setupStatus?.audio?.requiredDevices || {};
-  for (const name of ["BlackHole 2ch", "BlackHole 16ch", "Meeting Copilot Output"]) {
+  for (const name of ["BlackHole 2ch", "BlackHole 16ch"]) {
     setCheck(
       document.querySelector(`[data-device="${name}"]`),
       document.querySelector(`[data-device-label="${name}"]`),
@@ -322,11 +322,8 @@ projectForm.addEventListener("submit", async (event) => {
   }
 });
 
-document.querySelector("[data-open-audio-midi]").addEventListener("click", (event) =>
-  runSetupAction(event.currentTarget, "setup.open.audio-midi", {}, "Audio MIDI設定を開いています", "Audio MIDI設定を開きました"),
-);
 document.querySelector("[data-configure-audio]").addEventListener("click", (event) =>
-  runSetupAction(event.currentTarget, "setup.audio.configure", {}, "音声経路を設定しています", "音声経路を設定しました"),
+  runSetupAction(event.currentTarget, "setup.audio.configure", {}, "ChatGPT入力を設定しています", "ChatGPT入力を設定しました"),
 );
 document.querySelector("[data-open-chatgpt]").addEventListener("click", (event) =>
   runSetupAction(event.currentTarget, "setup.open.chatgpt", {}, "同じ専用ChromeでChatGPTを開いています", "専用ChromeでChatGPTを開きました"),

@@ -61,7 +61,7 @@
 
 - macOSのChatGPTマイク権限が許可されている
 - システム入力またはChatGPT入力が`BlackHole 2ch`
-- システム出力またはChatGPT出力が`Meeting Copilot Output`
+- 専用Chrome内のChatGPT出力が`BlackHole 16ch`へ自動設定される
 - GPT参加者の会議マイクがミュートされている
 - 会議参加者へAI参加と音声処理について必要な通知を済ませている
 

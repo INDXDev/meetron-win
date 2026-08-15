@@ -30,13 +30,15 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-switch_audio_source=''
-for candidate in /opt/homebrew/bin/SwitchAudioSource /usr/local/bin/SwitchAudioSource; do
-  if [ -x "$candidate" ]; then
-    switch_audio_source="$candidate"
-    break
-  fi
-done
+switch_audio_source="${MEETING_COPILOT_SWITCH_AUDIO_SOURCE:-}"
+if [ -z "$switch_audio_source" ]; then
+  for candidate in /opt/homebrew/bin/SwitchAudioSource /usr/local/bin/SwitchAudioSource; do
+    if [ -x "$candidate" ]; then
+      switch_audio_source="$candidate"
+      break
+    fi
+  done
+fi
 
 if [ -z "$switch_audio_source" ]; then
   printf 'SwitchAudioSource was not found. Run: brew install switchaudio-osx\n' >&2
@@ -63,9 +65,18 @@ original_output="$(node -e '
   if (typeof value !== "string" || !value) process.exit(1);
   process.stdout.write(value);
 ' "$state_path")"
+should_restore_output="$(node -e '
+  const fs = require("node:fs");
+  const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  process.stdout.write(value.outputChanged === false ? "0" : "1");
+' "$state_path")"
 
 devices="$($switch_audio_source -a)"
-for device in "$original_input" "$original_output"; do
+required_devices=("$original_input")
+if [ "$should_restore_output" -eq 1 ]; then
+  required_devices+=("$original_output")
+fi
+for device in "${required_devices[@]}"; do
   if ! printf '%s\n' "$devices" | grep -Fx "$device" >/dev/null; then
     printf 'The original audio device is no longer available: %s\n' "$device" >&2
     exit 1
@@ -74,22 +85,29 @@ done
 
 if [ "$dry_run" -eq 1 ]; then
   printf '[DRY RUN] %s -t input -s %q\n' "$switch_audio_source" "$original_input"
-  printf '[DRY RUN] %s -t output -s %q\n' "$switch_audio_source" "$original_output"
+  if [ "$should_restore_output" -eq 1 ]; then
+    printf '[DRY RUN] %s -t output -s %q\n' "$switch_audio_source" "$original_output"
+  else
+    printf '[DRY RUN] keep the current system output unchanged\n'
+  fi
   exit 0
 fi
 
 "$switch_audio_source" -t input -s "$original_input" >/dev/null
-"$switch_audio_source" -t output -s "$original_output" >/dev/null
+if [ "$should_restore_output" -eq 1 ]; then
+  "$switch_audio_source" -t output -s "$original_output" >/dev/null
+fi
 
 resolved_input="$($switch_audio_source -c -t input)"
 resolved_output="$($switch_audio_source -c -t output)"
-if [ "$resolved_input" != "$original_input" ] || [ "$resolved_output" != "$original_output" ]; then
+if [ "$resolved_input" != "$original_input" ] || \
+  { [ "$should_restore_output" -eq 1 ] && [ "$resolved_output" != "$original_output" ]; }; then
   printf 'The original audio routing could not be verified.\n' >&2
   exit 1
 fi
 
 rm -f "$state_path"
 node -e '
-  const [input, output] = process.argv.slice(1);
-  process.stdout.write(`${JSON.stringify({ restored: true, input, output })}\n`);
-' "$original_input" "$original_output"
+  const [input, output, outputRestored] = process.argv.slice(1);
+  process.stdout.write(`${JSON.stringify({ restored: true, input, output, outputRestored: outputRestored === "1" })}\n`);
+' "$original_input" "$resolved_output" "$should_restore_output"

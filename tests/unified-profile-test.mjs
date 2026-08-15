@@ -74,9 +74,20 @@ try {
     route.fulfill({
       contentType: "text/html",
       body: `<!doctype html><html><body>
+        <script>
+          const nativeEnumerateDevices = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+          navigator.mediaDevices.enumerateDevices = async () => {
+            const devices = await nativeEnumerateDevices();
+            const output = devices.find((device) => device.kind === 'audiooutput');
+            return output
+              ? [...devices, { kind: 'audiooutput', deviceId: output.deviceId, label: 'BlackHole 16ch (Virtual)' }]
+              : devices;
+          };
+        </script>
         <button aria-label="Open profile menu">Profile</button>
         <textarea aria-label="New chat in Meeting Copilot"></textarea>
         <button aria-label="Start voice" onclick="
+          window.__testVoiceContext = new AudioContext();
           this.setAttribute('aria-label', 'End voice');
           document.querySelector('#microphone').hidden = false;
         ">Voice</button>
@@ -113,6 +124,9 @@ try {
   if (
     result.status !== "voice-active" ||
     result.replacedTab !== true ||
+    result.audioOutput?.routed !== true ||
+    !result.audioOutput?.device?.startsWith("BlackHole 16ch") ||
+    result.audioOutput?.audioContexts !== 1 ||
     !oldChatgptPage.isClosed() ||
     !meetPreserved ||
     meetPage.isClosed() ||

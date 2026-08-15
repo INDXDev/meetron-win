@@ -68,18 +68,11 @@ Chrome公式ビルドでは開発版拡張の読込をコマンドだけで完�
 
 ### ステップ2: 音声デバイス
 
-画面に従い、`BlackHole 2ch`、`BlackHole 16ch`、`Meeting Copilot Output`を確認します。`Meeting Copilot Output`がない場合は`Audio MIDI設定`を開き、次の構成でMulti-Output Deviceを作成します。
+画面に従い、`BlackHole 2ch`と`BlackHole 16ch`を確認します。
 
-1. 左下の`+`から`Create Multi-Output Device`を選ぶ
-2. 名前を`Meeting Copilot Output`に変更する
-3. ヘッドホンと`BlackHole 16ch`だけを選ぶ
-4. 2chの物理出力をPrimary Deviceにする
-5. 必要に応じてBlackHole側のDrift Correctionを有効にする
-6. 可能なら両方を`48.0 kHz`にそろえる
+`ChatGPT入力を設定`を押すと、システム入力だけが`BlackHole 2ch`へ切り替わります。システム出力は現在のスピーカーまたはヘッドホンのままです。ChatGPT Voiceの開始時に、専用Chrome内の出力だけが`BlackHole 16ch`へ自動設定されます。
 
-`BlackHole 2ch`はこのMulti-Output Deviceへ含めないでください。ChatGPTが自分の発話へ反応する音声ループの原因になります。
-
-作成後に`状態を再確認`し、`音声経路を設定`を押します。入力が`BlackHole 2ch`、出力が`Meeting Copilot Output`へ切り替わります。詳しくは[BlackHoleセットアップ](setup-blackhole.md)と[音声ルーティング](audio-routing.md)を参照してください。
+バージョン0.6以前で作成した`Meeting Copilot Output`は新しい構成では使用しません。残しても動作へ影響しませんが、不要ならAudio MIDI設定から削除できます。詳しくは[BlackHoleセットアップ](setup-blackhole.md)と[音声ルーティング](audio-routing.md)を参照してください。
 
 ### ステップ3: 専用Chrome
 
@@ -132,7 +125,7 @@ https://chatgpt.com/g/g-p-PROJECT_ID/project
 3. 普段使うChromeの拡張へMeet URLを入力して`開始`を押す
 4. 同じMeet上の常駐パネルでGPT参加者の状態を確認する
 
-開始時にシステム入力を`BlackHole 2ch`、出力を`Meeting Copilot Output`へ切り替え、変更前のデバイスをローカルへ保存します。常駐パネルでは専用ChromeのGPT参加者マイク、ChatGPT Voiceの再起動、セッション終了、環境診断を操作できます。パネルはユーザー本人のマイクボタンを直接操作しません。
+開始時にシステム入力を`BlackHole 2ch`へ切り替え、変更前のデバイスをローカルへ保存します。システム出力は変更せず、ChatGPT Voiceだけを`BlackHole 16ch`へ送ります。常駐パネルでは専用ChromeのGPT参加者マイク、ChatGPT Voiceの再起動、セッション終了、環境診断を操作できます。パネルはユーザー本人のマイクボタンを直接操作しません。
 
 `Voice再起動`は専用Chrome全体を再起動せず、ChatGPTタブだけを閉じて新しいVoiceタブを作ります。Meet参加者は同じ会議に残ります。
 
@@ -172,7 +165,7 @@ Project URL、ChatGPTとGoogleへのログイン、音声デバイス名を確�
 
 ### 音声ループが起きる
 
-直ちに常駐パネルでGPT参加者をミュートします。`Meeting Copilot Output`へ`BlackHole 2ch`が含まれていないことを確認してください。
+直ちに常駐パネルでGPT参加者をミュートします。専用MeetのSpeakerが`BlackHole 2ch`、Microphoneが`BlackHole 16ch`であることを確認してください。
 
 ### 拡張を更新する
 
