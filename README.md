@@ -35,17 +35,20 @@ BlackHoleのバイナリやインストーラは、このリポジトリには�
 
 ```text
 会議参加者の音声
-  -> GPT参加者のspeaker: BlackHole 2ch
+  -> 専用ChromeのGPT参加者Meet
+  -> Meet speaker: BlackHole 2ch
+  -> macOS system input: BlackHole 2ch
   -> ChatGPT Voice input
 
 ChatGPT Voice output
-  -> dedicated Chrome output: BlackHole 16ch
-  -> GPT参加者のmic: BlackHole 16ch
-  -> 会議
-  -> 通常ChromeのMeetからヘッドホンへ
+  -> ChatGPT VoiceタブだけをBlackHole 16chへ出力
+  -> GPT参加者Meet mic: BlackHole 16ch
+  -> Google Meet
+  -> 通常ChromeのMeet
+  -> 現在の物理出力（ヘッドホン／スピーカー）
 ```
 
-`BlackHole 2ch`を入力経路、`BlackHole 16ch`を出力経路に分けることで、ChatGPTの発話が自分の入力へ戻るループを防ぎます。
+ChatGPTから見て、`BlackHole 2ch`を入力経路、`BlackHole 16ch`を出力経路に分けることで、ChatGPTの発話が自分の入力へ戻るループを防ぎます。ChatGPT Voiceタブ以外の音声とmacOSのシステム出力は変更しません。
 
 ## AIアシスタントによる初回導入（推奨）
 
