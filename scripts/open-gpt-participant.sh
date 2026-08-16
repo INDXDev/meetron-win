@@ -7,6 +7,7 @@ auto_prepare=0
 join_meeting=0
 join_delay="${MEETING_COPILOT_JOIN_DELAY:-2}"
 restart_profile=0
+manual_join_required=0
 meeting_url=''
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 environment_cdp_port="${MEETING_COPILOT_CDP_PORT:-}"
@@ -181,6 +182,11 @@ find_profile_pids() {
   '
 }
 
+dedicated_endpoint_ready() {
+  node "$repo_root/scripts/verify-dedicated-chrome.mjs" \
+    --profile-dir "$profile_dir" --port "$cdp_port" >/dev/null 2>&1
+}
+
 if [ ! -d "$repo_root/node_modules/playwright-core" ]; then
   printf 'playwright-core is required. Run: npm install\n' >&2
   exit 1
@@ -200,7 +206,7 @@ if [ -n "$profile_pids" ]; then
       sleep 0.25
       attempts=$((attempts + 1))
     done
-  elif curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; then
+  elif dedicated_endpoint_ready; then
     launch_chrome=0
     printf '[INFO] Reusing shared Meeting Copilot Chrome profile.\n'
   else
@@ -222,7 +228,7 @@ if [ "$launch_chrome" -eq 1 ]; then
 fi
 
 attempts=0
-while ! curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; do
+while ! dedicated_endpoint_ready; do
   attempts=$((attempts + 1))
   if [ "$attempts" -ge 40 ]; then
     printf 'Chrome automation endpoint did not start on port %s.\n' "$cdp_port" >&2
@@ -262,6 +268,9 @@ if [ "$auto_prepare" -eq 1 ]; then
       printf '\nMeet accepted the click, but its resulting state could not be determined. Check the browser window.\n' >&2
       exit 15
       ;;
+    16)
+      manual_join_required=1
+      ;;
     *)
       exit "$prepare_status"
       ;;
@@ -276,12 +285,23 @@ fi
 
 if [ "$auto_prepare" -eq 1 ]; then
   if [ "$join_meeting" -eq 1 ]; then
-    cat <<EOF
+    if [ "$manual_join_required" -eq 1 ]; then
+      cat <<EOF
+
+Meet camera state could not be determined automatically.
+Check that the camera is off, then join manually in the dedicated Chrome window.
+The meeting microphone remains muted until admission is detected.
+
+See docs/audio-routing.md for the full sequence.
+EOF
+    else
+      cat <<EOF
 
 Meet admission was requested. The meeting microphone remains muted.
 
 See docs/audio-routing.md for the full sequence.
 EOF
+    fi
   else
     cat <<EOF
 

@@ -51,9 +51,14 @@ find_profile_pids() {
   '
 }
 
+dedicated_endpoint_ready() {
+  node "$repo_root/scripts/verify-dedicated-chrome.mjs" \
+    --profile-dir "$profile_dir" --port "$cdp_port" >/dev/null 2>&1
+}
+
 profile_pids="$(find_profile_pids)"
 if [ -n "$profile_pids" ]; then
-  if ! curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; then
+  if ! dedicated_endpoint_ready; then
     printf 'The shared Chrome profile is running without its automation endpoint.\n' >&2
     printf 'Close it, then run this setup command again.\n' >&2
     exit 1
@@ -71,6 +76,16 @@ else
     --new-window \
     'chrome://extensions/'
 fi
+
+attempts=0
+while ! dedicated_endpoint_ready; do
+  attempts=$((attempts + 1))
+  if [ "$attempts" -ge 40 ]; then
+    printf 'The dedicated Chrome automation endpoint did not start on port %s.\n' "$cdp_port" >&2
+    exit 1
+  fi
+  sleep 0.25
+done
 
 cat <<EOF
 

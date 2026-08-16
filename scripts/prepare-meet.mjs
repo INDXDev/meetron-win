@@ -251,7 +251,9 @@ const resolvedSpeakerDevice =
 
 let joinStatus = "not-requested";
 if (options.join) {
-  if (nameFilled) {
+  if (cameraState === "control-unavailable") {
+    joinStatus = "manual-camera-check-required";
+  } else if (nameFilled) {
     joinStatus = "anonymous-login-required";
   } else {
     const joinButton = page.getByRole("button", {
@@ -327,5 +329,8 @@ if (joinStatus === "rejected") {
 }
 if (joinStatus === "requested-status-unknown") {
   process.exit(15);
+}
+if (joinStatus === "manual-camera-check-required") {
+  process.exit(16);
 }
 process.exit(0);

@@ -78,6 +78,7 @@ esac
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 environment_cdp_port="${MEETING_COPILOT_CDP_PORT:-}"
+environment_profile_dir="${MEETING_COPILOT_PROFILE_DIR:-}"
 if [ -f "$repo_root/.meeting-copilot.env" ]; then
   # shellcheck disable=SC1091
   . "$repo_root/.meeting-copilot.env"
@@ -85,7 +86,14 @@ fi
 if [ -n "$environment_cdp_port" ]; then
   MEETING_COPILOT_CDP_PORT="$environment_cdp_port"
 fi
+if [ -n "$environment_profile_dir" ]; then
+  MEETING_COPILOT_PROFILE_DIR="$environment_profile_dir"
+fi
 cdp_port="${MEETING_COPILOT_CDP_PORT:-9223}"
+profile_dir="${MEETING_COPILOT_PROFILE_DIR:-$HOME/Library/Application Support/MeetingCopilot/GPTParticipantChrome}"
+
+node "$repo_root/scripts/verify-dedicated-chrome.mjs" \
+  --profile-dir "$profile_dir" --port "$cdp_port" >/dev/null
 
 args=(
   --cdp "http://127.0.0.1:$cdp_port"

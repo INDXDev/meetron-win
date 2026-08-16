@@ -1,16 +1,28 @@
 # Meeting Copilot
 
-ChatGPT Web Voiceを、Google Meetへ`GPT-Live`という別参加者として接続するmacOS向けPoCです。OpenAI APIは使わず、BlackHoleの仮想音声デバイスで会議音声とChatGPT音声を双方向に橋渡しします。
+[![CI](https://github.com/bb8ad8/meeting-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/bb8ad8/meeting-copilot/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#動作環境)
+
+ChatGPT Web Voiceを、Google Meetへ`GPT-Live`という別参加者として接続するmacOS向けの実験的ベータ版です。OpenAI APIは使わず、BlackHoleの仮想音声デバイスで会議音声とChatGPT音声を双方向に橋渡しします。
 
 このプロジェクトは非公式であり、OpenAI、Google、Existential Audioの提供・承認を受けた製品ではありません。ChatGPTとGoogle Meetの画面変更により、自動化が動かなくなる可能性があります。
 
 初回導入は、ローカルのファイルとターミナルを操作できるAIコーディング支援へセットアップを依頼する方法を推奨します。AIが環境診断とコマンド実行を担当し、管理者認証、再起動、Chromeの手動操作、アカウントへのログインなどは利用者が行います。詳しい役割分担は以下を参照してください。
 
+## 動作環境
+
+- macOS（CIはmacOS 14、実機はmacOS 26 / Apple Siliconで確認）
+- Google Chrome公式ビルド
+- Node.js 20以降、Homebrew、BlackHole 2ch / 16ch
+- ChatGPT Web Voiceを利用できるアカウント
+- Google Meetへ参加できるGoogleアカウント
+
+Intel MacとmacOS 13以前では未検証です。Chrome Web Store版はなく、GitHubから取得した拡張をデベロッパーモードで読み込みます。
+
 ## 現在のスコープ
 
-- macOS専用
 - Google Meetへの統合参加を自動化。Zoom Web Clientは低レベル起動のみ試験的に対応
-- Google Chrome、Node.js、BlackHoleは外部依存
 - 会議URL、初回マイク案内、表示名、音声デバイス、参加前ミュートを自動設定
 - ChatGPT Projectでの新規チャット作成とVoice開始を自動設定
 - 拡張の`開始`と統合起動では参加リクエストまで自動化。低レベル起動では`--join`指定時のみ自動化
@@ -60,27 +72,16 @@ README.mdとdocs/getting-started.mdを先に読み、最初に環境診断と作
 パスワードや認証コードをAIチャットへ入力するよう求めないでください。各工程の後に状態を再確認し、失敗した場合はログを調べてから次へ進んでください。
 ```
 
-### AIが行うこと
+### AIと利用者の役割分担
 
-- リポジトリの取得場所を特定し、Node.jsパッケージをインストールする
-- macOS、Homebrew、Chrome、Node.js、BlackHole、音声デバイスを診断する
-- HomebrewやNode.jsが不足している場合、実行内容を説明し、利用者の承認後にインストールを進める
-- 実行内容を事前確認し、利用者の同意後に音声依存のインストールを開始する
-- Native Messaging Hostを登録し、通常Chromeと専用Chromeで選ぶ正確な`extension`パスを案内する
-- 初期セットアップ画面や必要なブラウザー画面を開く
-- 再起動後に環境を再診断し、不足設定や接続エラーを調査する
-- ローカルテストを実行し、Meet開始前の準備状況を確認する
-
-### 利用者が行うこと
-
-- BlackHoleなど外部ソフトウェアのライセンス条件を読み、インストールに同意するか判断する
-- AIが提示した作業内容を確認し、ファイル操作やコマンド実行など必要な権限だけを承認する
-- 管理者パスワード、Touch ID、Google・ChatGPTのパスワード、2段階認証コードを、AIチャットではなく表示されたmacOSまたはサービスの画面へ直接入力する
-- BlackHole導入後にmacOSを再起動し、再起動完了をAIへ伝える
-- 普段使うChromeと専用Chromeでデベロッパーモードを有効にし、AIが示した`extension`フォルダを「パッケージ化されていない拡張機能」として読み込む
-- 専用ChromeでGoogleとChatGPTへログインし、ChatGPT ProjectとInstructionsを確認する
-- 組織の規定と参加者への通知・同意要件を確認し、必要ならMeet側で`GPT-Live`の参加を許可する
-- 機密情報を含まないテスト会議で、別端末を使って音声とミュートを最終確認する
+| 工程 | AIが行うこと | 利用者が行うこと |
+| --- | --- | --- |
+| 取得・診断 | リポジトリの取得場所を特定または相談して取得し、macOS、Homebrew、Chrome、Node.js、音声デバイスを診断 | 保存場所と、AIへ許可する操作範囲を確認 |
+| 依存ソフト | 実行内容を説明し、許可後にNode.jsパッケージや音声依存の導入を進行 | 外部ライセンスを読み、同意するか判断。管理者パスワードやTouch IDはmacOS画面へ直接入力 |
+| 再起動 | 再起動前の作業を完了し、再開後に状態を再診断 | Macを再起動し、同じAIへ完了を伝える |
+| Chrome拡張 | Native Messaging Hostを登録し、選択する正確な`extension`パスと画面を提示 | 普段使うChromeと専用Chromeでデベロッパーモードを有効化し、拡張を手動で読み込む |
+| アカウント | 必要なGoogle、ChatGPT、Project画面を開き、完了後の状態を確認 | パスワードと2段階認証を各サービス画面へ直接入力し、Project Instructionsを確認 |
+| 動作確認 | ローカルテスト、接続診断、ログ調査を実行 | テスト会議への参加・許可、参加者への通知、別端末での音声確認を実施 |
 
 パスワードや認証コードをAIへ共有する必要はありません。管理者パスワードの入力待ちになった場合は、利用者がターミナルまたはmacOSの確認画面へ直接入力し、処理が終わったことだけをAIへ伝えます。
 
@@ -152,7 +153,7 @@ ChatGPT Voiceを開始し、Meetの参加リクエストまでまとめて実行
 
 統合起動では、同じ専用Chromeの別タブでChatGPT VoiceとMeetを開き、入室後に会議マイクも自動解除します。Voice再起動はChatGPTタブだけを作り直すため、Meet参加状態を維持します。低レベルの`open-gpt-participant.sh --join`だけを実行した場合はミュートのままです。`--join`を使う場合は専用ChromeでGoogleへ一度ログインしてください。
 
-参加ボタン表示後の固定待機は既定で2秒です。必要な場合は`MEETING_COPILOT_JOIN_DELAY`で調整できます。MeetのUIからマイクボタンを検出できない場合は、標準ショートカットへ自動的にフォールバックします。
+参加ボタン表示後の固定待機は既定で2秒です。必要な場合は`MEETING_COPILOT_JOIN_DELAY`で調整できます。MeetのUIからマイクボタンを検出できない場合は、標準ショートカットへ自動的にフォールバックします。カメラ状態を安全に判定できないUIでは参加ボタンを自動で押さず、専用Chromeを前面に残すので、カメラをオフにして手動参加してください。
 
 会議中にGPT参加者のマイクをローカルから制御する場合:
 
@@ -194,9 +195,13 @@ ChatGPT側は[Project設定](docs/chatgpt-project.md)、動作確認は[検証�
 ./tests/scripts-test.sh
 ```
 
+不具合報告では、macOSとChromeのバージョン、再現手順、`.meeting-copilot-runtime/meeting-launch.log`からアカウント情報や会議URLを除いた内容を[Issue](https://github.com/bb8ad8/meeting-copilot/issues)へ添えてください。修正提案は[CONTRIBUTING.md](CONTRIBUTING.md)に従ってください。セキュリティ上の問題は公開Issueへ書かず、[SECURITY.md](SECURITY.md)の連絡方法を利用してください。
+
 ## 配布上の注意
 
 Meeting Copilotは[GNU General Public License v3.0](LICENSE)で提供します。BlackHoleはリポジトリへ同梱せず、利用者が上流のライセンス条件を確認して直接導入します。Playwrightなど外部依存のライセンスは各パッケージに従います。
+
+本ソフトウェアは実験的な自動化ツールであり、会議への参加、録音、要約、判断の正確性や継続動作を保証しません。本番会議へ導入する前に、機密情報を含まない会議で確認してください。
 
 会議音声をChatGPTへ送る前に、所属組織の規定と参加者への通知・同意要件を確認してください。
 

@@ -52,48 +52,71 @@ try {
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const context = browser.contexts()[0];
   await context.route("https://meet.google.com/**", (route) => {
-    const cameraOn = new URL(route.request().url()).searchParams.has("camera-on");
+    const url = new URL(route.request().url());
+    const cameraOn = url.searchParams.has("camera-on");
+    const cameraUnknown = url.searchParams.has("camera-unknown");
     route.fulfill({
       contentType: "text/html",
       body: `<!doctype html><html><body>
-        <input aria-label="Name">
         <button aria-label="Microphone: BlackHole 16ch">Microphone</button>
         <button aria-label="Speaker: BlackHole 2ch">Speaker</button>
         <button aria-label="Turn on microphone">Muted</button>
         ${
           cameraOn
             ? '<button aria-label="Turn off camera" onclick="this.setAttribute(\'aria-label\', \'Turn on camera\')">Camera</button>'
-            : "<p>Camera device is unavailable</p>"
+            : cameraUnknown
+              ? "<p>Camera status uses an unknown UI</p>"
+              : "<p>Camera device is unavailable</p>"
         }
+        <button aria-label="Join now" onclick="document.body.dataset.joinClicked = 'true'; this.remove(); document.body.append(' Leave call ')">Join</button>
       </body></html>`,
     });
   });
 
-  async function prepare(url) {
-    const { stdout } = await execFileAsync(
-      process.execPath,
-      [
-        resolve(repoRoot, "scripts/prepare-meet.mjs"),
-        "--cdp",
-        `http://127.0.0.1:${port}`,
-        "--url",
-        url,
-      ],
-      { cwd: repoRoot, timeout: 30_000 },
-    );
-    return JSON.parse(stdout);
+  async function prepare(url, { join = false, expectedExit = 0 } = {}) {
+    const argumentsList = [
+      resolve(repoRoot, "scripts/prepare-meet.mjs"),
+      "--cdp",
+      `http://127.0.0.1:${port}`,
+      "--url",
+      url,
+    ];
+    if (join) argumentsList.push("--join", "--join-delay", "0");
+    try {
+      const { stdout } = await execFileAsync(process.execPath, argumentsList, {
+        cwd: repoRoot,
+        timeout: 30_000,
+      });
+      if (expectedExit !== 0) throw new Error(`Expected exit ${expectedExit}, got 0.`);
+      return JSON.parse(stdout);
+    } catch (error) {
+      if (error.code !== expectedExit) throw error;
+      return JSON.parse(error.stdout);
+    }
   }
 
   const unavailableCamera = await prepare("https://meet.google.com/abc-defg-hij");
   const enabledCamera = await prepare("https://meet.google.com/abc-defg-hij?camera-on=1");
+  const unknownCamera = await prepare(
+    "https://meet.google.com/abc-defg-hij?camera-unknown=1",
+    { join: true, expectedExit: 16 },
+  );
+  const unknownCameraPage = context
+    .pages()
+    .find((page) => page.url().includes("camera-unknown=1"));
+  const joinClicked = await unknownCameraPage?.evaluate(() => document.body.dataset.joinClicked);
   if (
     unavailableCamera.cameraDisabled !== true ||
     unavailableCamera.cameraState !== "unavailable" ||
     enabledCamera.cameraDisabled !== true ||
-    enabledCamera.cameraState !== "off"
+    enabledCamera.cameraState !== "off" ||
+    unknownCamera.cameraDisabled !== false ||
+    unknownCamera.cameraState !== "control-unavailable" ||
+    unknownCamera.joinStatus !== "manual-camera-check-required" ||
+    joinClicked
   ) {
     throw new Error(
-      `Meet camera handling failed: ${JSON.stringify({ unavailableCamera, enabledCamera })}`,
+      `Meet camera handling failed: ${JSON.stringify({ unavailableCamera, enabledCamera, unknownCamera, joinClicked })}`,
     );
   }
 } finally {
@@ -108,4 +131,4 @@ try {
   await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
-process.stdout.write("Meet camera unavailable and camera-off states are handled.\n");
+process.stdout.write("Meet camera states fail over to manual admission when unknown.\n");

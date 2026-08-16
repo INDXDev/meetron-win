@@ -142,6 +142,11 @@ find_profile_pids() {
   find_profile_pids_for "$profile_dir"
 }
 
+dedicated_endpoint_ready() {
+  node "$repo_root/scripts/verify-dedicated-chrome.mjs" \
+    --profile-dir "$profile_dir" --port "$cdp_port" >/dev/null 2>&1
+}
+
 legacy_profile_dir="$HOME/Library/Application Support/MeetingCopilot/ChatGPTVoiceChrome"
 if [ "$legacy_profile_dir" != "$profile_dir" ]; then
   legacy_profile_pids="$(find_profile_pids_for "$legacy_profile_dir")"
@@ -167,7 +172,7 @@ if [ -n "$profile_pids" ]; then
       sleep 0.25
       attempts=$((attempts + 1))
     done
-  elif curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; then
+  elif dedicated_endpoint_ready; then
     launch_chrome=0
     printf '[INFO] Reusing shared Meeting Copilot Chrome profile.\n'
   else
@@ -189,7 +194,7 @@ if [ "$launch_chrome" -eq 1 ]; then
 fi
 
 attempts=0
-while ! curl --silent --fail "http://127.0.0.1:$cdp_port/json/version" >/dev/null 2>&1; do
+while ! dedicated_endpoint_ready; do
   attempts=$((attempts + 1))
   if [ "$attempts" -ge 40 ]; then
     printf 'Chrome automation endpoint did not start on port %s.\n' "$cdp_port" >&2

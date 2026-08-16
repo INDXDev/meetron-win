@@ -6,7 +6,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const runtimeDir = resolve(repoRoot, ".meeting-copilot-runtime");
+const runtimeDir = resolve(
+  process.env.MEETING_COPILOT_RUNTIME_DIR || resolve(repoRoot, ".meeting-copilot-runtime"),
+);
 const statePath = resolve(runtimeDir, "meeting-launch.json");
 const setupStatePath = resolve(runtimeDir, "setup.json");
 const meetingUrl = process.argv[2];

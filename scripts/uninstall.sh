@@ -43,6 +43,55 @@ fi
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 runtime_dir="${MEETING_COPILOT_RUNTIME_DIR:-$repo_root/.meeting-copilot-runtime}"
+
+canonical_path() {
+  node - "$1" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+let current = path.resolve(process.argv[2]);
+const missing = [];
+while (!fs.existsSync(current)) {
+  const parent = path.dirname(current);
+  if (parent === current) break;
+  missing.unshift(path.basename(current));
+  current = parent;
+}
+const resolved = fs.existsSync(current) ? fs.realpathSync.native(current) : current;
+process.stdout.write(path.join(resolved, ...missing));
+NODE
+}
+
+validate_removal_paths() {
+  expected_runtime="$(canonical_path "$repo_root/.meeting-copilot-runtime")"
+  actual_runtime="$(canonical_path "$runtime_dir")"
+  profile_root="$(canonical_path "$HOME/Library/Application Support/MeetingCopilot")"
+  actual_profile="$(canonical_path "$shared_profile")"
+  actual_legacy_profile="$(canonical_path "$legacy_chatgpt_profile")"
+
+  if [ "$actual_runtime" != "$expected_runtime" ]; then
+    printf 'Refusing to remove unexpected runtime path: %s\n' "$runtime_dir" >&2
+    exit 1
+  fi
+  case "$actual_profile" in
+    "$profile_root"/*) ;;
+    *)
+      printf 'Refusing to remove a Chrome profile outside Meeting Copilot data: %s\n' "$shared_profile" >&2
+      exit 1
+      ;;
+  esac
+  if [ "$actual_legacy_profile" != "$profile_root/ChatGPTVoiceChrome" ]; then
+    printf 'Refusing to remove unexpected legacy profile path: %s\n' "$legacy_chatgpt_profile" >&2
+    exit 1
+  fi
+}
+
+shared_profile="${MEETING_COPILOT_PROFILE_DIR:-$HOME/Library/Application Support/MeetingCopilot/GPTParticipantChrome}"
+legacy_chatgpt_profile="$HOME/Library/Application Support/MeetingCopilot/ChatGPTVoiceChrome"
+if [ "$remove_data" -eq 1 ]; then
+  validate_removal_paths
+fi
+
 audio_state_path="$runtime_dir/audio-original.json"
 if [ -f "$audio_state_path" ]; then
   if ! restore_output="$("$repo_root/scripts/restore-audio.sh" 2>&1)"; then
@@ -54,8 +103,6 @@ fi
 "$repo_root/scripts/install-control-ui.sh" --uninstall --quiet
 
 if [ "$remove_data" -eq 1 ]; then
-  shared_profile="${MEETING_COPILOT_PROFILE_DIR:-$HOME/Library/Application Support/MeetingCopilot/GPTParticipantChrome}"
-  legacy_chatgpt_profile="$HOME/Library/Application Support/MeetingCopilot/ChatGPTVoiceChrome"
   rm -rf -- "$runtime_dir" "$shared_profile" "$legacy_chatgpt_profile"
   rm -f -- "$repo_root/.meeting-copilot.env"
   printf 'Removed Meeting Copilot local data and dedicated Chrome profiles.\n'

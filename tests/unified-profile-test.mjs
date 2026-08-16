@@ -51,6 +51,40 @@ try {
     throw new Error("Chrome CDP endpoint did not start.");
   }
 
+  const { stdout: ownershipOutput } = await execFileAsync(
+    process.execPath,
+    [
+      resolve(repoRoot, "scripts/verify-dedicated-chrome.mjs"),
+      "--profile-dir",
+      profileDir,
+      "--port",
+      String(port),
+    ],
+    { cwd: repoRoot, timeout: 10_000 },
+  );
+  if (JSON.parse(ownershipOutput).verified !== true) {
+    throw new Error(`Dedicated Chrome ownership was not verified: ${ownershipOutput}`);
+  }
+  let wrongProfileRejected = false;
+  try {
+    await execFileAsync(
+      process.execPath,
+      [
+        resolve(repoRoot, "scripts/verify-dedicated-chrome.mjs"),
+        "--profile-dir",
+        resolve(profileDir, "not-the-active-profile"),
+        "--port",
+        String(port),
+      ],
+      { cwd: repoRoot, timeout: 10_000 },
+    );
+  } catch {
+    wrongProfileRejected = true;
+  }
+  if (!wrongProfileRejected) {
+    throw new Error("A CDP endpoint from another profile was accepted.");
+  }
+
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const context = browser.contexts()[0];
 

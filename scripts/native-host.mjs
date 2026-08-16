@@ -23,7 +23,9 @@ const MAX_MESSAGE_BYTES = 1024 * 1024;
 const execFileAsync = promisify(execFile);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scriptsDir = resolve(repoRoot, "scripts");
-const runtimeDir = resolve(repoRoot, ".meeting-copilot-runtime");
+const runtimeDir = resolve(
+  process.env.MEETING_COPILOT_RUNTIME_DIR || resolve(repoRoot, ".meeting-copilot-runtime"),
+);
 const meetingStatePath = resolve(runtimeDir, "meeting-launch.json");
 const meetingLogPath = resolve(runtimeDir, "meeting-launch.log");
 const micStatePath = resolve(runtimeDir, "meet-mic.json");
@@ -181,12 +183,24 @@ async function getAudioStatus() {
 }
 
 async function connectDedicatedChrome() {
+  const port = configuredPort("MEETING_COPILOT_CDP_PORT", "9223");
+  await run(
+    process.execPath,
+    [
+      resolve(scriptsDir, "verify-dedicated-chrome.mjs"),
+      "--profile-dir",
+      dedicatedProfileDir,
+      "--port",
+      port,
+    ],
+    5_000,
+  );
   if (dedicatedBrowser?.isConnected()) {
     return dedicatedBrowser;
   }
 
   dedicatedBrowser = await chromium.connectOverCDP(
-    `http://127.0.0.1:${configuredPort("MEETING_COPILOT_CDP_PORT", "9223")}`,
+    `http://127.0.0.1:${port}`,
     { timeout: 3_000 },
   );
   return dedicatedBrowser;
@@ -574,6 +588,53 @@ function processIsRunning(pid) {
   }
 }
 
+async function launchProcessIsRunning(pid) {
+  if (!processIsRunning(pid)) return false;
+  try {
+    const result = await execFileAsync("/bin/ps", ["-p", String(pid), "-o", "command="], {
+      timeout: 2_000,
+    });
+    return result.stdout.includes("meeting-start-job.mjs");
+  } catch {
+    return false;
+  }
+}
+
+function signalLaunchProcessGroup(pid, signal) {
+  try {
+    process.kill(-pid, signal);
+    return;
+  } catch (groupError) {
+    try {
+      process.kill(pid, signal);
+      return;
+    } catch {
+      if (groupError.code !== "ESRCH") throw groupError;
+    }
+  }
+}
+
+async function cancelMeetingLaunch() {
+  const launch = getMeetingLaunchState();
+  if (!launch || !["starting", "running"].includes(launch.status)) {
+    return { cancelled: false, alreadyStopped: true };
+  }
+  if (!(await launchProcessIsRunning(launch.pid))) {
+    return { cancelled: false, alreadyStopped: true };
+  }
+
+  signalLaunchProcessGroup(launch.pid, "SIGTERM");
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    if (!(await launchProcessIsRunning(launch.pid))) {
+      return { cancelled: true, forced: false, pid: launch.pid };
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+  }
+
+  signalLaunchProcessGroup(launch.pid, "SIGKILL");
+  return { cancelled: true, forced: true, pid: launch.pid };
+}
+
 function getMeetingLaunchState() {
   if (!existsSync(meetingStatePath)) {
     return null;
@@ -660,6 +721,14 @@ function startMeeting(payload) {
     env: commandEnvironment(),
     stdio: ["ignore", log, log],
   });
+  try {
+    const latestState = JSON.parse(readFileSync(meetingStatePath, "utf8"));
+    if (latestState.status === "starting" && latestState.startedAt === state.startedAt) {
+      writeJsonAtomic(meetingStatePath, { ...state, pid: child.pid });
+    }
+  } catch {
+    // The launch job may have already advanced the state to running.
+  }
   child.unref();
   closeSync(log);
 
@@ -674,7 +743,7 @@ async function getStatus() {
   ]);
   const setup = await getSetupStatus(audio);
   return {
-    host: { connected: true, version: "0.7.1" },
+    host: { connected: true, version: "0.7.2" },
     audio,
     chatgpt,
     dedicatedMeet,
@@ -724,6 +793,13 @@ async function restoreAudio() {
 
 async function stopSession() {
   const warnings = [];
+  let launchCancellation = { cancelled: false, alreadyStopped: true };
+  try {
+    launchCancellation = await cancelMeetingLaunch();
+  } catch (error) {
+    warnings.push(`起動中の処理を停止できませんでした: ${error.message}`);
+  }
+
   let microphone = { muted: false, alreadyMuted: false };
   try {
     const meet = await getDedicatedMeetStatus();
@@ -760,7 +836,7 @@ async function stopSession() {
       stoppedAt: new Date().toISOString(),
     });
   }
-  return { stopped: true, microphone, voice, meet, audio, warnings };
+  return { stopped: true, launchCancellation, microphone, voice, meet, audio, warnings };
 }
 
 async function runDiagnostics() {

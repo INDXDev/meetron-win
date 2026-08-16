@@ -140,6 +140,30 @@ else
   fail 'uninstaller preserves failed audio recovery state'
 fi
 
+uninstall_sentinel="$uninstall_home/keep-me"
+printf 'keep\n' > "$uninstall_sentinel"
+rm -f "$uninstall_runtime/audio-original.json"
+if HOME="$uninstall_home" \
+  MEETING_COPILOT_RUNTIME_DIR="$uninstall_runtime" \
+  MEETING_COPILOT_PROFILE_DIR="$uninstall_home" \
+  "$uninstall_repo/scripts/uninstall.sh" --remove-data --yes >/dev/null 2>&1; then
+  fail 'uninstaller rejects a profile path outside Meeting Copilot data'
+elif [ -f "$uninstall_sentinel" ]; then
+  pass 'uninstaller protects paths outside Meeting Copilot data'
+else
+  fail 'uninstaller preserved unrelated user data'
+fi
+
+if HOME="$uninstall_home" \
+  MEETING_COPILOT_RUNTIME_DIR="$uninstall_home" \
+  "$uninstall_repo/scripts/uninstall.sh" --remove-data --yes >/dev/null 2>&1; then
+  fail 'uninstaller rejects an unexpected runtime path'
+elif [ -f "$uninstall_sentinel" ]; then
+  pass 'uninstaller protects data from an unexpected runtime path'
+else
+  fail 'uninstaller preserved unrelated runtime data'
+fi
+
 if "$repo_root/scripts/install-audio-deps.sh" --dry-run --yes --accept-blackhole-license >/dev/null; then
   pass 'audio installer dry run'
 else
@@ -162,6 +186,12 @@ if node "$repo_root/scripts/open-chrome-page.mjs" --help >/dev/null; then
   pass 'shared Chrome page opener help'
 else
   fail 'shared Chrome page opener help'
+fi
+
+if node "$repo_root/scripts/verify-dedicated-chrome.mjs" --help >/dev/null; then
+  pass 'dedicated Chrome ownership verifier help'
+else
+  fail 'dedicated Chrome ownership verifier help'
 fi
 
 if node "$repo_root/scripts/set-meet-mic.mjs" --help >/dev/null; then
@@ -226,6 +256,12 @@ if node "$repo_root/tests/native-host-test.mjs" >/dev/null; then
   pass 'Native Host protocol and setup validation'
 else
   fail 'Native Host protocol ping'
+fi
+
+if node "$repo_root/tests/session-cancel-test.mjs" >/dev/null; then
+  pass 'session stop cancels an in-progress launch'
+else
+  fail 'session launch cancellation'
 fi
 
 if node "$repo_root/tests/service-worker-test.mjs" >/dev/null; then
