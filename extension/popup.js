@@ -42,6 +42,7 @@ let forceSetup = false;
 let setupBusy = false;
 let selectedProvider = "google-meet";
 let sessionBusy = false;
+let sessionStatus = null;
 let inputValidationTimer = null;
 let inputValidationSequence = 0;
 
@@ -117,10 +118,13 @@ function renderLaunch(state) {
     stopped: "終了済み",
   };
   launch.hidden = false;
-  launchStatus.textContent = labels[state.status] || state.status;
+  launchStatus.textContent = state.manualActionRequired
+    ? "手動操作待ち"
+    : labels[state.status] || state.status;
 }
 
 function renderSessionControls(status) {
+  sessionStatus = status;
   const launchState = status?.meetingLaunch;
   const meeting = status?.dedicatedMeeting || status?.dedicatedMeet || {};
   const providerId = launchState?.providerId || meeting.providerId || "google-meet";
@@ -141,10 +145,16 @@ function renderSessionControls(status) {
       : meeting.microphone === "muted" ? "参加中・ミュート" : "参加中・送話中",
     waiting: "ホストの許可待ち",
     prejoin: "参加前",
+    "manual-action-required": "専用Chromeで手動参加",
     rejected: "参加できません",
     "not-running": launchState.status === "completed" ? "専用Chromeを確認" : "起動中",
   };
-  sessionConnection.textContent = labels[meeting.connection] || "状態確認中";
+  const connection =
+    launchState.manualActionRequired === true &&
+    ["prejoin", "not-running"].includes(meeting.connection)
+      ? "manual-action-required"
+      : meeting.connection;
+  sessionConnection.textContent = labels[connection] || "状態確認中";
   const microphoneKnown = new Set(["muted", "unmuted"]).has(meeting.microphone);
   sessionMicButton.textContent = meeting.microphone === "muted" ? "ミュート解除" : "ミュート";
   sessionMicButton.disabled = sessionBusy || meeting.connection !== "joined" || !microphoneKnown;
@@ -412,21 +422,81 @@ async function runSessionAction(type, pendingText, successText) {
       throw new Error("操作後の状態を確認できませんでした");
     }
     setMessage(successText, "success");
-    const status = await nativeRequest("session.status.get");
-    renderLaunch(status.meetingLaunch);
-    renderSessionControls(status);
   } catch (error) {
     setMessage(error.message, "error");
   } finally {
     sessionBusy = false;
     const status = await nativeRequest("session.status.get").catch(() => null);
-    if (status) renderSessionControls(status);
+    if (status) {
+      renderLaunch(status.meetingLaunch);
+      renderSessionControls(status);
+    } else if (sessionStatus) {
+      renderSessionControls(sessionStatus);
+    }
   }
 }
 
-sessionMicButton.addEventListener("click", () =>
-  runSessionAction("participant.mic.toggle", "マイクを切り替えています", "マイクを切り替えました"),
-);
+async function setSessionMicrophone() {
+  const meeting = sessionStatus?.dedicatedMeeting || sessionStatus?.dedicatedMeet || {};
+  if (sessionBusy || !["muted", "unmuted"].includes(meeting.microphone)) return;
+
+  const desiredState = meeting.microphone === "muted" ? "unmuted" : "muted";
+  const previousStatus = sessionStatus;
+  const pendingMeeting = { ...meeting, microphone: desiredState };
+  sessionBusy = true;
+  sessionStatus = {
+    ...sessionStatus,
+    dedicatedMeeting: pendingMeeting,
+    ...(sessionStatus.dedicatedMeet && { dedicatedMeet: pendingMeeting }),
+  };
+  renderSessionControls(sessionStatus);
+  setMessage(desiredState === "muted" ? "マイクをミュートしています" : "ミュートを解除しています");
+  try {
+    const result = await nativeRequest("participant.mic.set", { state: desiredState });
+    if (result?.verified !== true || result.after !== desiredState) {
+      throw new Error("操作後のマイク状態を確認できませんでした");
+    }
+    const updatedMeeting = { ...meeting, microphone: result.after };
+    sessionStatus = {
+      ...sessionStatus,
+      dedicatedMeeting: updatedMeeting,
+      ...(sessionStatus.dedicatedMeet && { dedicatedMeet: updatedMeeting }),
+      participantMicrophone: {
+        ...(sessionStatus.participantMicrophone || sessionStatus.meetMicrophone || {}),
+        state: result.after,
+      },
+      ...(sessionStatus.meetMicrophone && {
+        meetMicrophone: { ...sessionStatus.meetMicrophone, state: result.after },
+      }),
+    };
+    setMessage(
+      result.after === "muted" ? "マイクをミュートしました" : "ミュートを解除しました",
+      "success",
+    );
+  } catch (error) {
+    // A Native Messaging timeout can arrive just before Meet finishes the
+    // requested change. Confirm the provider state before surfacing an error
+    // so a late success never flashes as a failure in the popup.
+    const confirmedStatus = await nativeRequest("session.status.get").catch(() => null);
+    const confirmedMeeting =
+      confirmedStatus?.dedicatedMeeting || confirmedStatus?.dedicatedMeet || {};
+    if (confirmedMeeting.microphone === desiredState) {
+      sessionStatus = confirmedStatus;
+      setMessage(
+        desiredState === "muted" ? "マイクをミュートしました" : "ミュートを解除しました",
+        "success",
+      );
+    } else {
+      sessionStatus = previousStatus;
+      setMessage(error.message, "error");
+    }
+  } finally {
+    sessionBusy = false;
+    renderSessionControls(sessionStatus);
+  }
+}
+
+sessionMicButton.addEventListener("click", setSessionMicrophone);
 sessionVoiceButton.addEventListener("click", () =>
   runSessionAction("voice.restart", "Voiceを再起動しています", "Voiceを再起動しました"),
 );

@@ -81,10 +81,10 @@ try {
   assert.equal(blackHoleUpdate.status, 0, blackHoleUpdate.stderr || blackHoleUpdate.stdout);
   assert.match(blackHoleUpdate.stdout, /Keeping the compatible blackhole audio backend/);
   assert.match(blackHoleUpdate.stdout, /planned action: legacy/);
-  assert.equal(JSON.parse(readFileSync(resolve(targetRoot, "package.json"), "utf8")).version, "0.9.0");
+  assert.equal(JSON.parse(readFileSync(resolve(targetRoot, "package.json"), "utf8")).version, "0.10.0");
   assert.equal(
     JSON.parse(readFileSync(resolve(targetRoot, "extension/manifest.json"), "utf8")).version,
-    "0.9.0",
+    "0.10.0",
   );
   assert.match(readFileSync(resolve(targetRoot, ".meeting-copilot.env"), "utf8"), /g-p-test/);
   assert.equal(

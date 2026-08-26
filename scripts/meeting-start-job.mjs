@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertSessionOwnership } from "../src/core/session-state.mjs";
+import { getMeetingProvider } from "../src/providers/provider-registry.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeDir = resolve(
@@ -19,6 +20,7 @@ const meetingDisplay = process.argv[3] || meetingUrl;
 const sessionId = process.argv[4] || null;
 const providerId = process.argv[5] || "google-meet";
 const audioBackendId = process.argv[6] || "legacy";
+const manualActionReason = getMeetingProvider(providerId).automation.manualActionReason;
 
 function writeState(state) {
   mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
@@ -113,13 +115,18 @@ child.on("error", (error) => {
 });
 
 child.on("close", (code, signal) => {
-  const succeeded = code === 0;
+  const manualActionRequired = code === 16;
+  const succeeded = code === 0 || manualActionRequired;
   writeState({
     ...baseState,
     status: succeeded ? "completed" : "failed",
     finishedAt: new Date().toISOString(),
     exitCode: code,
     signal,
+    ...(manualActionRequired && {
+      manualActionRequired: true,
+      actionRequired: manualActionReason,
+    }),
     ...(!succeeded && { error: failureMessage(code, signal) }),
   });
   process.exit(succeeded ? 0 : 1);

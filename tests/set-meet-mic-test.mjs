@@ -102,7 +102,7 @@ try {
     result.before !== "unmuted" ||
     result.after !== "muted" ||
     result.verified !== true ||
-    !new Set(["click", "force-click", "dom-click"]).has(result.interaction) ||
+    result.interaction !== "dom-click" ||
     result.usedKeyboardShortcut !== false ||
     state !== "true"
   ) {

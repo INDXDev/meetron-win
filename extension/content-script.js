@@ -43,6 +43,7 @@
 
   const iconPaths = {
     activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    image: '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
     chevronDown: '<path d="m6 9 6 6 6-6"/>',
     chevronUp: '<path d="m18 15-6-6-6 6"/>',
     mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
@@ -71,6 +72,7 @@
     <style>
       :host { all: initial; color-scheme: light dark; }
       * { box-sizing: border-box; letter-spacing: 0; }
+      [hidden] { display: none !important; }
       button { font: inherit; }
       .panel {
         width: 304px;
@@ -127,6 +129,7 @@
       .command:hover { background: #f8f9fa; }
       .command.primary { color: #fff; border-color: #1a73e8; background: #1a73e8; }
       .command.primary:hover { background: #1765cc; }
+      .command.wide { grid-column: 1 / -1; }
       .command:disabled { opacity: .55; cursor: default; }
       .footer { margin-top: 9px; display: flex; align-items: center; gap: 6px; min-height: 22px; }
       .message { flex: 1; color: #5f6368; font-size: 11px; overflow-wrap: anywhere; }
@@ -158,6 +161,7 @@
         </div>
         <div class="section-title">操作</div>
         <div class="actions">
+          <button class="command primary wide" data-screenshot type="button">${icon("image")}<span>GPTに画面を送る</span></button>
           <button class="command primary" data-mic type="button">${icon("micOff")}<span>ミュート解除</span></button>
           <button class="command" data-restart type="button">${icon("rotate")}<span>Voice再起動</span></button>
           <button class="command" data-stop type="button">${icon("square")}<span>セッション終了</span></button>
@@ -177,6 +181,7 @@
     dot: shadow.querySelector("[data-status-dot]"),
     expand: shadow.querySelector("[data-expand]"),
     micQuick: shadow.querySelector("[data-mic-quick]"),
+    screenshot: shadow.querySelector("[data-screenshot]"),
     mic: shadow.querySelector("[data-mic]"),
     restart: shadow.querySelector("[data-restart]"),
     stop: shadow.querySelector("[data-stop]"),
@@ -223,6 +228,12 @@
         connection = "failed";
       }
     }
+    if (
+      launch.manualActionRequired === true &&
+      ["prejoin", "not-running"].includes(connection)
+    ) {
+      connection = "manual-action-required";
+    }
 
     const detectedMicrophone = ["muted", "unmuted"].includes(live.microphone)
       ? live.microphone
@@ -235,7 +246,9 @@
 
     return {
       connection,
+      actionRequired: launch.actionRequired,
       providerId: live.providerId || launch.providerId || "google-meet",
+      visualContext: live.capabilities?.visualContext || "unsupported",
       audioConnection: live.audioConnection || "unknown",
       microphone:
         detectedMicrophone === "unavailable"
@@ -256,6 +269,7 @@
 
   function render() {
     const participant = getParticipantState();
+    const voice = hostStatus?.chatgpt || {};
     const launchInProgress = ["starting", "running"].includes(
       hostStatus?.meetingLaunch?.status,
     );
@@ -276,6 +290,7 @@
       waiting: ["承認待ち", ""],
       rejected: ["参加拒否", "bad"],
       prejoin: ["参加前", ""],
+      "manual-action-required": ["手動参加待ち", ""],
       starting: ["起動中", ""],
       failed: ["起動失敗", "bad"],
       stopped: ["終了済み", ""],
@@ -302,6 +317,23 @@
       : "GPT参加者をミュート";
     elements.micQuick.setAttribute("aria-label", elements.micQuick.title);
 
+    const visualContextSupported = participant.visualContext === "viewport-screenshot";
+    elements.screenshot.hidden = Boolean(hostStatus) && !visualContextSupported;
+    const screenshotAvailable =
+      visualContextSupported &&
+      participant.connection === "joined" &&
+      voice.voiceActive === true &&
+      Boolean(hostStatus);
+    elements.screenshot.disabled = !screenshotAvailable || busy;
+    elements.screenshot.title = screenshotAvailable
+      ? "現在の会議画面をChatGPTへ送る"
+      : participant.connection !== "joined"
+        ? "GPT参加者の会議参加後に利用できます"
+        : "ChatGPT Voiceの開始後に利用できます";
+    elements.restart.disabled = busy;
+    elements.stop.disabled = busy;
+    elements.diagnostics.disabled = busy;
+
     if (!hostStatus) {
       setValue(elements.voiceStatus, "未接続", "bad");
       setValue(elements.audioStatus, "未確認", "bad");
@@ -309,7 +341,6 @@
       return;
     }
 
-    const voice = hostStatus.chatgpt || {};
     const voiceRoutingReady = voice.audioOutput?.routed === true;
     const voiceHealthy = voice.voiceActive && voiceRoutingReady;
     setValue(
@@ -344,6 +375,13 @@
       voiceHealthy &&
       audioReady;
     elements.dot.className = `status-dot ${ready ? "ready" : ""}`;
+    if (participant.connection === "manual-action-required") {
+      setMessage(
+        participant.actionRequired === "camera-check"
+          ? "専用Chromeでカメラをオフにして、手動で参加してください"
+          : "専用Chromeで表示内容を確認し、手動で参加してください",
+      );
+    }
   }
 
   async function nativeRequest(type, payload = {}) {
@@ -356,7 +394,10 @@
       request: { type, payload },
     });
     if (!response?.ok) {
-      throw new Error(response?.error || "Native Host request failed.");
+      const error = new Error(response?.error || "Native Host request failed.");
+      error.code = response?.errorData?.code || "NATIVE_HOST_ERROR";
+      error.details = response?.errorData?.details;
+      throw error;
     }
     return response.data;
   }
@@ -367,8 +408,11 @@
     }
     try {
       hostStatus = await nativeRequest("status.get");
-      setMessage("接続済み");
+      if (!quiet) setMessage("接続済み");
     } catch (error) {
+      // Background polling is advisory. A transient Native Host delay must not
+      // erase a known-good state or flash an error over an active operation.
+      if (quiet) return;
       hostStatus = null;
       setMessage(error.message, true);
     }
@@ -377,23 +421,39 @@
 
   async function toggleMicrophone() {
     const participant = getParticipantState();
+    const desiredState = participant.microphone === "muted" ? "unmuted" : "muted";
+    const previousOverride = microphoneOverride;
+    const previousMeeting = hostStatus?.dedicatedMeeting || hostStatus?.dedicatedMeet || null;
+    const previousTracked = hostStatus?.participantMicrophone || null;
     busy = true;
-    render();
     try {
       if (!hostStatus || participant.connection !== "joined") {
         throw new Error("GPT参加者は会議に参加していません");
       }
-      const result = await nativeRequest("participant.mic.toggle");
-      if (result?.verified !== true) {
+      microphoneOverride = desiredState;
+      const pendingMeeting = { ...previousMeeting, microphone: desiredState };
+      hostStatus.dedicatedMeeting = pendingMeeting;
+      if (hostStatus.dedicatedMeet) hostStatus.dedicatedMeet = pendingMeeting;
+      hostStatus.participantMicrophone = {
+        ...(previousTracked || {}),
+        meetingUrl: previousTracked?.meetingUrl || hostStatus.meetingLaunch?.meetingUrl,
+        providerId: participant.providerId,
+        state: desiredState,
+      };
+      setMessage(desiredState === "muted" ? "ミュートしています" : "ミュートを解除しています");
+      render();
+      const result = await nativeRequest("participant.mic.set", { state: desiredState });
+      if (result?.verified !== true || result.after !== desiredState) {
         throw new Error("会議のマイク状態を確認できませんでした");
       }
       if (["muted", "unmuted"].includes(result.after)) {
         microphoneOverride = result.after;
         hostStatus.participantMicrophone = {
           meetingUrl: result.url || hostStatus.meetingLaunch?.meetingUrl,
+          providerId: participant.providerId,
           state: result.after,
         };
-        hostStatus.dedicatedMeeting = {
+        const updatedMeeting = {
           ...(hostStatus.dedicatedMeeting || hostStatus.dedicatedMeet || {}),
           connection: "joined",
           microphone: result.after,
@@ -402,6 +462,8 @@
             hostStatus.dedicatedMeeting?.url ||
             hostStatus.dedicatedMeet?.url,
         };
+        hostStatus.dedicatedMeeting = updatedMeeting;
+        if (hostStatus.dedicatedMeet) hostStatus.dedicatedMeet = updatedMeeting;
         setMessage(
           result.after === "muted"
             ? "GPT参加者をミュートしました"
@@ -409,7 +471,28 @@
         );
       }
     } catch (error) {
-      setMessage(error.message, true);
+      // The request may time out immediately before the browser applies the
+      // change. Keep the pending UI while checking the actual meeting state.
+      const confirmedStatus = await nativeRequest("status.get").catch(() => null);
+      const confirmedMeeting =
+        confirmedStatus?.dedicatedMeeting || confirmedStatus?.dedicatedMeet || {};
+      if (confirmedMeeting.microphone === desiredState) {
+        hostStatus = confirmedStatus;
+        microphoneOverride = desiredState;
+        setMessage(
+          desiredState === "muted"
+            ? "GPT参加者をミュートしました"
+            : "GPT参加者のミュートを解除しました",
+        );
+      } else {
+        microphoneOverride = previousOverride;
+        if (hostStatus && previousMeeting) {
+          hostStatus.dedicatedMeeting = previousMeeting;
+          if (hostStatus.dedicatedMeet) hostStatus.dedicatedMeet = previousMeeting;
+        }
+        if (hostStatus) hostStatus.participantMicrophone = previousTracked;
+        setMessage(error.message, true);
+      }
     } finally {
       busy = false;
       render();
@@ -439,6 +522,29 @@
     }
   }
 
+  async function sendScreenshot() {
+    busy = true;
+    setMessage("現在の画面をChatGPTへ送信しています");
+    render();
+    try {
+      const result = await nativeRequest("visual-context.screenshot.send");
+      const size = Number.isFinite(result?.bytes)
+        ? `${Math.max(1, Math.round(result.bytes / 1024))} KB`
+        : "送信完了";
+      const dimensions = Number.isFinite(result?.width) && Number.isFinite(result?.height)
+        ? `${result.width}×${result.height}`
+        : "画面";
+      setMessage(`ChatGPTへ送信しました（${dimensions} / ${size}）`);
+    } catch (error) {
+      const stage = error?.details?.stage;
+      const diagnostic = [error?.code, stage].filter(Boolean).join(" / ");
+      setMessage(`${error.message}${diagnostic ? `（${diagnostic}）` : ""}`, true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
   function onTrustedClick(element, handler) {
     element.addEventListener("click", (event) => {
       if (!event.isTrusted) {
@@ -450,6 +556,7 @@
 
   onTrustedClick(elements.mic, toggleMicrophone);
   onTrustedClick(elements.micQuick, toggleMicrophone);
+  onTrustedClick(elements.screenshot, sendScreenshot);
   onTrustedClick(elements.refresh, () => refreshStatus());
   onTrustedClick(elements.restart, () =>
     runCommand("voice.restart", "Voiceを再起動しています", "Voiceを再起動しました"),

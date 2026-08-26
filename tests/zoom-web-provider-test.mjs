@@ -2,6 +2,7 @@
 
 import { chromium } from "playwright-core";
 import {
+  findZoomPage,
   getZoomWebStatus,
   leaveZoomWeb,
   reconcileZoomWebSession,
@@ -84,6 +85,9 @@ await context.route("https://app.zoom.us/wc/12345678901/client", (route) =>
 );
 const page = await context.newPage();
 await page.goto("https://us02web.zoom.us/wc/12345678901/join?pwd=must-be-redacted");
+if (findZoomPage(browser) !== page) {
+  throw new Error("Zoom visual context page was not selected from the dedicated browser.");
+}
 
 const webClientFrame = page.frames().find((frame) => frame !== page.mainFrame());
 await webClientFrame.evaluate(() => {

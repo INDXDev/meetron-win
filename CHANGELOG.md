@@ -5,6 +5,24 @@ user-visible changes; implementation-only refactors stay in Git history.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-27
+
+### Added
+
+- Google Meet／Zoomの常駐パネルから、専用Chromeに表示中の会議画面をメモリ内JPEGとしてChatGPT Voiceの会話へ送る操作を追加。
+- 同じGoogleアカウントが別デバイスですでに会議へ参加している場合の「このデバイスでも参加」フローに対応。
+
+### Changed
+
+- ChatGPT Webの現行統合Voice UIにある「音声設定」コントロールでもVoice起動状態を検出。
+- ChatGPTへの画像添付を添付ボタン優先・複数シグナル・長めの待機で確認し、送信完了も入力欄またはユーザーメッセージで検証。失敗時は段階別コードとサニタイズ済み診断ログを残す。
+- Meetのカメラ状態を自動確認できない場合を手動参加待ちとして扱い、参加前のマイク解除タイムアウトによって専用Chromeが終了しないよう修正。
+- 拡張UIのマイク操作を明示的なミュート状態の設定へ変更し、通常の状態取得から重い会議修復処理を分離。Meet操作は待機の少ないDOM経路を優先し、表示はクリック直後に切り替えて失敗時だけ元へ戻す。
+
+### Security
+
+- 画面送信はGoogle Meet／Zoomの会議ページ上で行う明示的なユーザー操作だけを許可し、重複送信を防止。画像ファイルはローカルへ保存しない。
+
 ## [0.9.0] - 2026-08-24
 
 ### Added
@@ -63,7 +81,8 @@ user-visible changes; implementation-only refactors stay in Git history.
 - Initial self-hosted Meetron Audio driver and native Core Audio controller.
 - Required aggregate CI check for supported macOS runners.
 
-[Unreleased]: https://github.com/bb8ad8/meetron/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/bb8ad8/meetron/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/bb8ad8/meetron/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/bb8ad8/meetron/releases/tag/v0.9.0
 [0.8.1]: https://github.com/bb8ad8/meetron/releases/tag/v0.8.1
 [0.8.0]: https://github.com/bb8ad8/meetron/releases/tag/v0.8.0

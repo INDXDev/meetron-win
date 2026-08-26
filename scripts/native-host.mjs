@@ -2,6 +2,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import {
+  appendFileSync,
   closeSync,
   existsSync,
   mkdirSync,
@@ -18,6 +19,10 @@ import { promisify } from "node:util";
 import { getAudioStatus } from "./audio-backend.mjs";
 import { connectToChromeOverCDP } from "./playwright-cdp.mjs";
 import { locatorIsVisible } from "../src/browser/meeting-browser.mjs";
+import {
+  getChatgptWebUiState,
+  sendMeetingScreenshotToChatgpt,
+} from "../src/chatgpt/chatgpt-web.mjs";
 import { MeetronError } from "../src/core/errors.mjs";
 import {
   createProtocolResponse,
@@ -55,11 +60,14 @@ const meetingStatePath = resolve(runtimeDir, "meeting-launch.json");
 const meetingLogPath = resolve(runtimeDir, "meeting-launch.log");
 const micStatePath = resolve(runtimeDir, "meet-mic.json");
 const setupStatePath = resolve(runtimeDir, "setup.json");
+const visualContextLogPath = resolve(runtimeDir, "visual-context.log");
 const envPath = resolve(repoRoot, ".meeting-copilot.env");
 const dedicatedProfileDir = platformPaths.dedicatedProfileDir;
 const PROFILE_LAYOUT_VERSION = 2;
 let dedicatedBrowser = null;
 let dedicatedBrowserConnection = null;
+let screenshotSendInFlight = false;
+let visualContextSequence = 0;
 
 if (process.argv.includes("--help")) {
   process.stdout.write(`Meetron Native Messaging Host\n\nExpected extension: ${EXTENSION_ID}\n`);
@@ -145,6 +153,29 @@ function rotateLog(path, maximumBytes = 2 * 1024 * 1024) {
   renameSync(path, previousPath);
 }
 
+function appendVisualContextLog(event) {
+  try {
+    mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
+    rotateLog(visualContextLogPath);
+    const safeEvent = {
+      timestamp: new Date().toISOString(),
+      operationId: event.operationId,
+      event: event.event,
+      ...(event.providerId && { providerId: event.providerId }),
+      ...(event.stage && { stage: event.stage }),
+      ...(Number.isFinite(event.elapsedMs) && { elapsedMs: event.elapsedMs }),
+      ...(Number.isFinite(event.durationMs) && { durationMs: event.durationMs }),
+      ...(event.code && { code: event.code }),
+    };
+    appendFileSync(visualContextLogPath, `${JSON.stringify(safeEvent)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  } catch {
+    // A diagnostic write failure must not change the screenshot result.
+  }
+}
+
 function writeJsonAtomic(path, value) {
   mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
   const temporaryPath = `${path}.${process.pid}.tmp`;
@@ -198,12 +229,7 @@ async function getChatgptStatus() {
       return { browserConnected: true, voiceActive: false, microphoneOn: false };
     }
 
-    const endVoice = page.getByRole("button", {
-      name: /^(音声を終了する|End voice)$/i,
-    });
-    const microphoneOn = page.getByRole("button", {
-      name: /^(マイクをオフにする|Turn off microphone)$/i,
-    });
+    const voiceUi = await getChatgptWebUiState(page);
 
     const audioOutput = await page.evaluate(() => {
       const state = globalThis.__meetingCopilotAudioRouting;
@@ -222,9 +248,8 @@ async function getChatgptStatus() {
 
     return {
       browserConnected: true,
-      voiceActive: (await endVoice.count()) > 0 && (await endVoice.first().isVisible()),
-      microphoneOn:
-        (await microphoneOn.count()) > 0 && (await microphoneOn.first().isVisible()),
+      voiceActive: voiceUi.voiceActive,
+      microphoneOn: voiceUi.microphoneOn,
       audioOutput,
       title: await page.title(),
     };
@@ -243,34 +268,44 @@ function activeProviderId() {
   return getMeetingLaunchState()?.providerId || "google-meet";
 }
 
-async function getDedicatedMeetingStatus(providerId = activeProviderId()) {
+async function getDedicatedMeetingStatus(
+  providerId = activeProviderId(),
+  { reconcile = false } = {},
+) {
+  const provider = getMeetingProvider(providerId);
   try {
     const browser = await connectDedicatedChrome();
-    const provider = getMeetingProvider(providerId);
     let status = await provider.getStatus(browser, locatorIsVisible);
-    const tracked = getParticipantMicrophoneState();
-    const desiredMicrophone =
-      tracked?.providerId === providerId &&
-      new Set(["muted", "unmuted"]).has(tracked.state)
-        ? tracked.state
-        : "muted";
-    let readiness;
-    try {
-      readiness = await provider.reconcileSession(browser, locatorIsVisible, {
-        status,
-        desiredMicrophone,
-      });
-      if (readiness.changed) {
-        status = await provider.getStatus(browser, locatorIsVisible);
+    let readiness = null;
+    if (reconcile) {
+      const tracked = getParticipantMicrophoneState();
+      const desiredMicrophone =
+        tracked?.providerId === providerId &&
+        new Set(["muted", "unmuted"]).has(tracked.state)
+          ? tracked.state
+          : "muted";
+      try {
+        readiness = await provider.reconcileSession(browser, locatorIsVisible, {
+          status,
+          desiredMicrophone,
+        });
+        if (readiness.changed) {
+          status = await provider.getStatus(browser, locatorIsVisible);
+        }
+      } catch (error) {
+        readiness = {
+          ready: false,
+          changed: false,
+          error: error.message,
+        };
       }
-    } catch (error) {
-      readiness = {
-        ready: false,
-        changed: false,
-        error: error.message,
-      };
     }
-    return { ...status, providerId, readiness };
+    return {
+      ...status,
+      providerId,
+      capabilities: provider.capabilities,
+      ...(readiness && { readiness }),
+    };
   } catch (error) {
     dedicatedBrowser = null;
     return createParticipantStatus({
@@ -280,6 +315,7 @@ async function getDedicatedMeetingStatus(providerId = activeProviderId()) {
       camera: "unknown",
       audioConnection: "unknown",
       providerId,
+      capabilities: provider.capabilities,
       error: error.message,
     });
   }
@@ -705,6 +741,78 @@ async function restartVoice() {
   };
 }
 
+async function sendVisualContextScreenshot() {
+  if (screenshotSendInFlight) {
+    throw new MeetronError(
+      "SCREENSHOT_SEND_IN_PROGRESS",
+      "画面の送信処理がすでに進行中です",
+    );
+  }
+
+  screenshotSendInFlight = true;
+  const operationId = `${process.pid}-${Date.now()}-${visualContextSequence += 1}`;
+  const operationStartedAt = Date.now();
+  let providerId = "";
+  try {
+    const launch = getMeetingLaunchState();
+    if (["starting", "running"].includes(launch?.status)) {
+      throw new MeetronError(
+        "SESSION_START_IN_PROGRESS",
+        "会議参加の完了後に画面を送ってください",
+      );
+    }
+
+    providerId = activeProviderId();
+    const provider = getMeetingProvider(providerId);
+    if (typeof provider.getVisualContextPage !== "function") {
+      throw new MeetronError(
+        "VISUAL_CONTEXT_UNSUPPORTED",
+        `${provider.label}では画面送信をまだ利用できません`,
+      );
+    }
+
+    const status = await getDedicatedMeetingStatus(providerId);
+    if (status.connection !== "joined") {
+      throw new MeetronError(
+        "MEETING_NOT_JOINED",
+        `${provider.label}への参加完了後に画面を送ってください`,
+      );
+    }
+
+    const browser = await connectDedicatedChrome();
+    appendVisualContextLog({ operationId, event: "started", providerId, elapsedMs: 0 });
+    const result = await sendMeetingScreenshotToChatgpt({
+      meetingPage: provider.getVisualContextPage(browser),
+      chatgptPage: await getChatgptPage(),
+      contextLabel: provider.label,
+      onProgress: (progress) => appendVisualContextLog({
+        operationId,
+        providerId,
+        ...progress,
+      }),
+    });
+    appendVisualContextLog({
+      operationId,
+      event: "completed",
+      providerId,
+      elapsedMs: Date.now() - operationStartedAt,
+    });
+    return result;
+  } catch (error) {
+    appendVisualContextLog({
+      operationId,
+      event: "failed",
+      providerId,
+      stage: error?.details?.stage || "preflight",
+      elapsedMs: Date.now() - operationStartedAt,
+      code: error?.code || "INTERNAL_ERROR",
+    });
+    throw error;
+  } finally {
+    screenshotSendInFlight = false;
+  }
+}
+
 async function persistParticipantMicrophone(result, providerId) {
   writeJsonAtomic(micStatePath, {
     meetingUrl: result.url || getMeetingLaunchState()?.meetingUrl || "",
@@ -731,7 +839,12 @@ async function setParticipantMicrophone(payload) {
 
 async function toggleParticipantMicrophone() {
   const providerId = activeProviderId();
-  const status = await getDedicatedMeetingStatus(providerId);
+  const provider = getMeetingProvider(providerId);
+  const browser = await connectDedicatedChrome();
+  // A toggle only needs the provider's current microphone signal. Running the
+  // full session reconciliation here can join Zoom audio or wait on unrelated
+  // camera checks before the actual click, causing the extension to time out.
+  const status = await provider.getStatus(browser, locatorIsVisible);
   const tracked = getParticipantMicrophoneState();
   const microphone = ["muted", "unmuted"].includes(status.microphone)
     ? status.microphone
@@ -741,7 +854,7 @@ async function toggleParticipantMicrophone() {
   if (!["muted", "unmuted"].includes(microphone)) {
     throw new MeetronError(
       "MICROPHONE_STATE_UNKNOWN",
-      `${getMeetingProvider(providerId).label}のマイク状態を確認できませんでした`,
+      `${provider.label}のマイク状態を確認できませんでした`,
     );
   }
   return setParticipantMicrophone({
@@ -807,7 +920,7 @@ async function handleMessage(message) {
     case "session.status.get":
       return getStatus();
     case "session.reconcile":
-      return getDedicatedMeetingStatus();
+      return getDedicatedMeetingStatus(activeProviderId(), { reconcile: true });
     case "meeting.validate":
       return validateMeeting(message.payload);
     case "setup.status":
@@ -832,6 +945,8 @@ async function handleMessage(message) {
       return cancelMeetingLaunch();
     case "voice.restart":
       return restartVoice();
+    case "visual-context.screenshot.send":
+      return sendVisualContextScreenshot();
     case "voice.stop":
       return stopVoice();
     case "audio.restore":

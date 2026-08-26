@@ -390,3 +390,10 @@ Browser opened. Before joining:
 See README.md for the audio routing and verification sequence.
 EOF
 fi
+
+# Preserve the dedicated Chrome window for provider-specific manual checks and
+# let the session pipeline skip post-join automation. Exit 16 is a recoverable
+# handoff state, not a launch failure.
+if [ "$manual_join_required" -eq 1 ]; then
+  exit 16
+fi

@@ -11,6 +11,8 @@ const RUNTIME_METHODS = Object.freeze([
   "setMicrophone",
   "leave",
 ]);
+const OPTIONAL_RUNTIME_METHODS = Object.freeze(["getVisualContextPage"]);
+const VISUAL_CONTEXT_CAPABILITIES = new Set(["viewport-screenshot"]);
 const INITIAL_PAGES = new Set(["meeting-display-url", "blank"]);
 const URL_TRANSPORTS = new Set(["argument", "stdin"]);
 
@@ -37,7 +39,9 @@ export function assertProviderDefinition(definition) {
     typeof definition.automation.preparationScript !== "string" ||
     !definition.automation.preparationScript.endsWith(".mjs") ||
     !URL_TRANSPORTS.has(definition.automation.urlTransport) ||
-    typeof definition.automation.supportsJoinDelay !== "boolean"
+    typeof definition.automation.supportsJoinDelay !== "boolean" ||
+    typeof definition.automation.manualActionReason !== "string" ||
+    !definition.automation.manualActionReason
   ) {
     throw new MeetronError(
       "INVALID_PROVIDER",
@@ -52,11 +56,28 @@ export function assertProviderDefinition(definition) {
       );
     }
   }
+  if (
+    definition.capabilities?.visualContext !== undefined &&
+    !VISUAL_CONTEXT_CAPABILITIES.has(definition.capabilities.visualContext)
+  ) {
+    throw new MeetronError(
+      "INVALID_PROVIDER",
+      `MeetingProvider ${definition.id} has an invalid visual context capability`,
+    );
+  }
   return definition;
 }
 
 export function createRuntimeProvider(definition, operations) {
   assertProviderDefinition(definition);
+  const supportsVisualContext = definition.capabilities?.visualContext === "viewport-screenshot";
+  const implementsVisualContext = typeof operations?.getVisualContextPage === "function";
+  if (supportsVisualContext !== implementsVisualContext) {
+    throw new MeetronError(
+      "INVALID_PROVIDER",
+      `MeetingProvider ${definition.id} visual context capability and implementation must match`,
+    );
+  }
   const provider = { ...definition };
   for (const name of RUNTIME_METHODS) {
     if (typeof operations?.[name] !== "function") {
@@ -66,6 +87,11 @@ export function createRuntimeProvider(definition, operations) {
       );
     }
     provider[name] = operations[name];
+  }
+  for (const name of OPTIONAL_RUNTIME_METHODS) {
+    if (typeof operations?.[name] === "function") {
+      provider[name] = operations[name];
+    }
   }
   provider.getStatus = async (...args) => createParticipantStatus(
     await operations.getStatus(...args),

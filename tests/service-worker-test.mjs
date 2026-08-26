@@ -78,12 +78,48 @@ if (
   throw new Error("Service worker accepted an unauthorized Native Host request.");
 }
 
+let screenshotResponse;
+const screenshotAsynchronous = messageListener(
+  {
+    channel: "meeting-copilot",
+    type: "native-request",
+    request: { type: "visual-context.screenshot.send", payload: {} },
+  },
+  {
+    id: chrome.runtime.id,
+    url: "https://meet.google.com/abc-defg-hij",
+  },
+  (value) => { screenshotResponse = value; },
+);
+await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
+if (screenshotAsynchronous !== true || screenshotResponse?.ok !== true) {
+  throw new Error("Service worker rejected an authorized Meet screenshot request.");
+}
+
+let zoomScreenshotResponse;
+const zoomScreenshotAsynchronous = messageListener(
+  {
+    channel: "meeting-copilot",
+    type: "native-request",
+    request: { type: "visual-context.screenshot.send", payload: {} },
+  },
+  {
+    id: chrome.runtime.id,
+    url: "https://app.zoom.us/wc/12345678901/join",
+  },
+  (value) => { zoomScreenshotResponse = value; },
+);
+await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
+if (zoomScreenshotAsynchronous !== true || zoomScreenshotResponse?.ok !== true) {
+  throw new Error("Service worker rejected an authorized Zoom screenshot request.");
+}
+
 let zoomResponse;
 const zoomAsynchronous = messageListener(
   {
     channel: "meeting-copilot",
     type: "native-request",
-    request: { type: "participant.mic.toggle", payload: {} },
+    request: { type: "participant.mic.set", payload: { state: "unmuted" } },
   },
   {
     id: chrome.runtime.id,

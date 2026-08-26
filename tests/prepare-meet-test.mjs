@@ -55,6 +55,8 @@ try {
     const url = new URL(route.request().url());
     const cameraOn = url.searchParams.has("camera-on");
     const cameraUnknown = url.searchParams.has("camera-unknown");
+    const sameAccount = url.searchParams.has("same-account");
+    const directSameAccount = url.searchParams.has("same-account-direct");
     route.fulfill({
       contentType: "text/html",
       body: `<!doctype html><html><body>
@@ -68,7 +70,18 @@ try {
               ? "<p>Camera status uses an unknown UI</p>"
               : "<p>Camera device is unavailable</p>"
         }
-        <button aria-label="Join now" onclick="document.body.dataset.joinClicked = 'true'; this.remove(); document.body.append(' Leave call ')">Join</button>
+        ${
+          directSameAccount
+            ? `<p>Test User is already in this call</p>
+              <button id="join-device" onclick="document.body.dataset.joinedOnThisDevice = 'true'; document.body.append(' Leave call ')">Join on this device too</button>
+              <button id="companion" onclick="document.body.dataset.companionMode = 'true'">Use Companion mode</button>`
+            : sameAccount
+            ? `<p>Test User is already in this call</p>
+              <button aria-label="Other ways to join" onclick="document.querySelector('#join-device').hidden = false; document.querySelector('#companion').hidden = false">Other ways</button>
+              <button id="join-device" hidden onclick="document.body.dataset.joinedOnThisDevice = 'true'; document.body.append(' Leave call ')">Join on this device too</button>
+              <button id="companion" hidden onclick="document.body.dataset.companionMode = 'true'">Use Companion mode</button>`
+            : '<button aria-label="Join now" onclick="document.body.dataset.joinClicked = \'true\'; this.remove(); document.body.append(\' Leave call \')">Join</button>'
+        }
       </body></html>`,
     });
   });
@@ -109,6 +122,32 @@ try {
     .pages()
     .find((page) => page.url().includes("camera-unknown=1"));
   const joinClicked = await unknownCameraPage?.evaluate(() => document.body.dataset.joinClicked);
+  const sameAccount = await prepare(
+    "https://meet.google.com/abc-defg-hij?same-account=1",
+    { join: true },
+  );
+  const sameAccountPage = context
+    .pages()
+    .find((page) => page.url().includes("same-account=1"));
+  const joinedOnThisDevice = await sameAccountPage?.evaluate(
+    () => document.body.dataset.joinedOnThisDevice,
+  );
+  const companionMode = await sameAccountPage?.evaluate(
+    () => document.body.dataset.companionMode,
+  );
+  const directSameAccount = await prepare(
+    "https://meet.google.com/abc-defg-hij?same-account-direct=1",
+    { join: true },
+  );
+  const directSameAccountPage = context
+    .pages()
+    .find((page) => page.url().includes("same-account-direct=1"));
+  const joinedDirectly = await directSameAccountPage?.evaluate(
+    () => document.body.dataset.joinedOnThisDevice,
+  );
+  const directCompanionMode = await directSameAccountPage?.evaluate(
+    () => document.body.dataset.companionMode,
+  );
   if (
     unavailableCamera.cameraDisabled !== true ||
     unavailableCamera.cameraState !== "unavailable" ||
@@ -117,10 +156,17 @@ try {
     unknownCamera.cameraDisabled !== false ||
     unknownCamera.cameraState !== "control-unavailable" ||
     unknownCamera.joinStatus !== "manual-camera-check-required" ||
-    joinClicked
+    joinClicked ||
+    sameAccount.connection !== "joined" ||
+    sameAccount.joinStatus !== "joined" ||
+    joinedOnThisDevice !== "true" ||
+    companionMode ||
+    directSameAccount.connection !== "joined" ||
+    joinedDirectly !== "true" ||
+    directCompanionMode
   ) {
     throw new Error(
-      `Meet camera handling failed: ${JSON.stringify({ unavailableCamera, enabledCamera, unknownCamera, joinClicked })}`,
+      `Meet preparation handling failed: ${JSON.stringify({ unavailableCamera, enabledCamera, unknownCamera, joinClicked, sameAccount, joinedOnThisDevice, companionMode, directSameAccount, joinedDirectly, directCompanionMode })}`,
     );
   }
 } finally {
@@ -135,4 +181,4 @@ try {
   await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
-process.stdout.write("Meet camera states fail over to manual admission when unknown.\n");
+process.stdout.write("Meet camera and same-account admission states passed.\n");

@@ -9,9 +9,11 @@ const CONTENT_REQUESTS = new Set([
   "session.reconcile",
   "meet.mic.toggle",
   "participant.mic.toggle",
+  "participant.mic.set",
   "voice.restart",
   "session.stop",
   "diagnostics.run",
+  "visual-context.screenshot.send",
 ]);
 
 function senderMayRequest(sender, requestType) {
@@ -83,7 +85,7 @@ function requestHost(request) {
     const id = `${Date.now()}-${requestSequence += 1}`;
     const timeoutMs = request.type === "voice.restart"
       ? 150_000
-      : request.type === "session.stop"
+      : ["session.stop", "visual-context.screenshot.send"].includes(request.type)
         ? 60_000
         : 20_000;
     const timeout = setTimeout(() => {

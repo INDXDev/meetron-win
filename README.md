@@ -14,6 +14,14 @@ ChatGPT Web Voiceを、Google Meetまたは任意のZoom Web Appへ`GPT-Live`と
 
 対応範囲とIssueを開く前の確認は[SUPPORT.md](SUPPORT.md)、変更点は[CHANGELOG.md](CHANGELOG.md)を参照してください。
 
+## 会議画面をChatGPTに見せる
+
+Google MeetやZoomで資料、広告レポート、グラフなどが画面共有されているとき、会議上のMeetronパネルから`GPTに画面を送る`を押すと、その時点でGPT参加者に見えている画面をChatGPTへ送れます。ChatGPTは音声だけでは分からない数値や図表も会議の背景情報として使えるため、資料について意見を求めたり、注目すべき変化や確認事項を会話の中で尋ねたりできます。
+
+送信は自動ではなく、ボタンを押したときにだけ行われます。先に資料を読ませておきたい場合はGPT参加者をミュートしてから送ることもでき、Google MeetとZoomのどちらでも同じように使えます。
+
+送られる画像には、共有資料だけでなく、その時点で会議画面に見えている参加者名、チャット、通知などが含まれる場合があります。送信前に内容を確認し、必要に応じて会議参加者の同意を得てください。画像はMeetronのファイルとしてMacへ保存されませんが、送信後はChatGPTの会話内容として扱われます。
+
 ## 非エンジニア向け最短手順
 
 初回導入は、ローカルのファイルとターミナルを操作できるAIコーディング支援へ任せる方法を推奨します。ターミナルのコマンドを自分で入力する必要はありません。
@@ -67,7 +75,7 @@ PKGは開発元が`Yuki Inaba`であることを自動確認します。パス�
 - Meetron Audioが古い場合だけ、新しいPKGの署名、公証、チェックサムを検証してインストーラを開く
 - BlackHoleまたは旧内製ドライバが正常に動いている場合は、その音声バックエンドを維持してPKGを強制しない
 
-Meetron Audioを更新した場合はMacを再起動します。BlackHoleを維持した場合は、Google Chromeを終了して再度開くだけで拡張`0.9.0`が読み込まれます。更新元として使った新しい配布フォルダは、更新完了後に削除して構いません。
+Meetron Audioを更新した場合はMacを再起動します。BlackHoleを維持した場合は、Google Chromeを終了して再度開くだけで拡張`0.10.0`が読み込まれます。更新元として使った新しい配布フォルダは、更新完了後に削除して構いません。
 
 ### `.command`が開けない場合
 
@@ -93,6 +101,7 @@ Meetron Audioを更新した場合はMacを再起動します。BlackHoleを維�
 - 拡張の`開始`と統合起動では参加リクエストまで自動化。低レベル起動では`--join`指定時のみ自動化
 - 発話抑制はProject instructionsと会議側ミュートで行う
 - 普段使うChromeのGoogle Meet／Zoom上に表示する小型UIから、GPT参加者の接続確認、マイク、Voice、セッション終了、環境診断を遠隔操作
+- Google Meet／Zoomの小型UIから、専用Chromeに表示中の会議画面をChatGPTへ画像コンテキストとして明示的に送信
 
 旧公開版から更新するユーザーに限り、BlackHole 2ch / 16chを移行期間中の互換バックエンドとして自動検出します。新規セットアップではBlackHoleを導入しません。Meetronは既存のBlackHoleを削除・変更しないため、ほかのアプリで引き続き利用できます。
 
@@ -262,6 +271,12 @@ npm ci
 
 普段使うChromeで拡張を開くと、音声デバイス、ChatGPT Project、専用Chromeを順に確認する初期セットアップが表示されます。完了後はGoogle Meet／Zoomを選ぶか、会議URLをそのまま貼り付けます。URLからサービスを自動判定し、Google Meetは参加とマイク解除まで、Zoomはブラウザ参加、音声設定、参加要求まで自動で実行します。通常Chromeの会議ページ上に出るパネルは専用ChromeのGPT参加者だけを操作し、ユーザー本人の会議マイクには触れません。
 
+普段使うChromeと専用Chromeが同じGoogleアカウントの場合、Meetronは「その他の参加方法」から「このデバイスでも参加」を選びます。独立した音声経路が必要なため、コンパニオン モードは使用しません。
+
+Google Meet／Zoomでは、GPT参加者が参加しChatGPT Voiceが起動すると、パネルの`GPTに画面を送る`が有効になります。押すと、専用Chromeの現在の会議タブに表示されている範囲をJPEGで取得し、会議サービス名を含む説明文と一緒に現在のChatGPT会話へ送ります。画像はメモリ上で直接添付し、Meetronのローカルファイルとして保存しません。送信前に、共有画面に含まれる機密情報、参加者名、通知、チャットなどもChatGPTへ送ってよいか確認してください。失敗時はパネルにエラーコードと処理段階を表示し、画像、会議URL、プロンプトを含まない診断情報を`.meeting-copilot-runtime/visual-context.log`へ記録します。
+
+画面送信時にGPT参加者がミュートかどうかは必須条件にしていません。先に情報を渡す場合はパネルのマイク操作で手動ミュートできます。ChatGPTには必要になるまで発言を控えるよう伝えますが、即座に反応しないことは保証されません。意図しない発話時はパネルからミュートしてください。
+
 ### Zoom Web App（任意・ベータ）
 
 拡張ポップアップで`Zoom`を選ぶか、`https://...zoom.us/j/...`形式の招待URLを貼り付けて`開始`します。Zoom URLを貼り付けた場合は自動でZoomへ切り替わります。
@@ -309,7 +324,7 @@ ChatGPT Voiceを開始し、会議への参加リクエストまでまとめて�
 
 統合起動では、同じ専用Chromeの別タブでChatGPT Voiceと会議ページを開き、入室後に会議マイクも自動解除します。Voice再起動はChatGPTタブだけを作り直すため、会議参加状態を維持します。低レベルの`open-gpt-participant.sh --join`だけを実行した場合はミュートのままです。Google Meetで`--join`を使う場合は専用ChromeでGoogleへ一度ログインしてください。
 
-参加ボタン表示後の固定待機は既定で2秒です。必要な場合は`MEETING_COPILOT_JOIN_DELAY`で調整できます。MeetのUIからマイクボタンを検出できない場合は、標準ショートカットへ自動的にフォールバックします。カメラ状態を安全に判定できないUIでは参加ボタンを自動で押さず、専用Chromeを前面に残すので、カメラをオフにして手動参加してください。
+参加ボタン表示後の固定待機は既定で2秒です。必要な場合は`MEETING_COPILOT_JOIN_DELAY`で調整できます。MeetのUIからマイクボタンを検出できない場合は、標準ショートカットへ自動的にフォールバックします。カメラ状態を安全に判定できないUIでは参加ボタンを自動で押さず、参加後のマイク解除も実行しません。専用ChromeとChatGPT Voiceを開いたまま通常Chromeのパネルへ「手動参加待ち」と表示するので、専用Chromeでカメラをオフにして手動参加してください。
 
 会議中にGPT参加者のマイクをローカルから制御する場合、互換用の旧ファイル名を維持している次のコマンドを使います。現在アクティブなGoogle Meet／Zoom参加者を自動判定して操作します。
 
@@ -395,7 +410,7 @@ npm run package:community -- \
 
 PKGをインストールして利用するだけのユーザーは、これらの開発者テストを実行する必要はありません。`./scripts/setup-meetron.sh --check-only`と`./scripts/check-env.sh`を使ってください。
 
-不具合報告では、[SUPPORT.md](SUPPORT.md)を確認し、macOSとChromeのバージョン、再現手順、`.meeting-copilot-runtime/meeting-launch.log`からアカウント情報や会議URLを除いた内容を[Issue](https://github.com/bb8ad8/meetron/issues)へ添えてください。修正提案は[CONTRIBUTING.md](CONTRIBUTING.md)に従ってください。セキュリティ上の問題は公開Issueへ書かず、[SECURITY.md](SECURITY.md)の連絡方法を利用してください。
+不具合報告では、[SUPPORT.md](SUPPORT.md)を確認し、macOSとChromeのバージョン、再現手順、`.meeting-copilot-runtime/meeting-launch.log`からアカウント情報や会議URLを除いた内容を[Issue](https://github.com/bb8ad8/meetron/issues)へ添えてください。画面送信の失敗は、画像や会議URLを記録しない`.meeting-copilot-runtime/visual-context.log`も確認してください。修正提案は[CONTRIBUTING.md](CONTRIBUTING.md)に従ってください。セキュリティ上の問題は公開Issueへ書かず、[SECURITY.md](SECURITY.md)の連絡方法を利用してください。
 
 ## 配布上の注意
 

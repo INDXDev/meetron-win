@@ -52,12 +52,14 @@ export const googleMeetDefinition = Object.freeze({
     preparationScript: "prepare-meet.mjs",
     urlTransport: "argument",
     supportsJoinDelay: true,
+    manualActionReason: "camera-check",
   }),
   capabilities: Object.freeze({
     audioSelection: "provider-ui",
     camera: "required-off",
     postJoinMicrophone: "unmuted",
     waitingRoom: true,
+    visualContext: "viewport-screenshot",
   }),
   matchUrl(value) {
     try {
@@ -191,29 +193,22 @@ export async function setGoogleMeetMicrophone(
   } else if (before !== desired) {
     const { turnOn, turnOff } = googleMeetMicrophoneControls(page);
     const controls = desired === "unmuted" ? turnOn : turnOff;
-    let control = await firstVisibleLocator(controls);
+    const control = await firstVisibleLocator(controls);
+    let actionDispatched = false;
     if (control) {
       try {
-        interaction = await activateLocator(control, { timeout: 1_500 });
+        // Meet's animated control can keep Playwright's actionability check
+        // waiting even though the DOM control is already usable. The same DOM
+        // activation path used by Zoom avoids that avoidable delay.
+        interaction = await activateLocator(control, { method: "dom" });
+        actionDispatched = true;
       } catch {
         // Meet may replace the control while it is being clicked.
       }
-      if ((await waitForGoogleMeetMicrophoneState(page, desired, 300)) !== desired) {
-        control = await firstVisibleLocator(controls);
-        if (control) {
-          try {
-            interaction = await activateLocator(control, { method: "dom", timeout: 1_500 });
-          } catch {
-            // The keyboard shortcut below is Meet's final provider-specific fallback.
-          }
-        }
-      }
-      if ((await waitForGoogleMeetMicrophoneState(page, desired, 300)) !== desired) {
-        await pressGoogleMeetMicrophoneShortcut(page);
-        usedKeyboardShortcut = true;
-        interaction = "keyboard";
-      }
-    } else {
+    }
+    // Never dispatch a second toggle merely because Meet's label update is
+    // delayed. A second click or shortcut can undo a successful first action.
+    if (!actionDispatched) {
       await pressGoogleMeetMicrophoneShortcut(page);
       usedKeyboardShortcut = true;
       interaction = "keyboard";
@@ -225,7 +220,7 @@ export async function setGoogleMeetMicrophone(
     : await waitForValue(
       () => getGoogleMeetMicrophoneState(page),
       desired,
-      { timeout: 2_000, interval: 100 },
+      { timeout: 3_000, interval: 100 },
     );
   const verified = desired !== "toggled" && detectedAfter === desired;
   if (!verified) {
@@ -322,4 +317,5 @@ export const googleMeetRuntimeProvider = createRuntimeProvider(googleMeetDefinit
   reconcileSession: reconcileGoogleMeetSession,
   setMicrophone: setGoogleMeetMicrophone,
   leave: leaveGoogleMeet,
+  getVisualContextPage: findGoogleMeetPage,
 });

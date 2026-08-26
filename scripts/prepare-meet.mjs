@@ -3,6 +3,7 @@
 import { getAudioStatus } from "./audio-backend.mjs";
 import { connectToChromeOverCDP } from "./playwright-cdp.mjs";
 import {
+  activateLocator,
   clickFirstVisible,
   closeOtherPages,
   firstBrowserContext,
@@ -223,12 +224,37 @@ if (options.join) {
     const joinButton = page.getByRole("button", {
       name: /参加をリクエスト|今すぐ参加|ask to join|join now/i,
     });
+    const otherJoinMethods = page.getByRole("button", {
+      name: /その他の参加方法|other ways to join|more ways to join/i,
+    });
+    const joinOnThisDevice = page.getByText(
+      /^(このデバイスでも参加|このデバイスで参加|join (?:on )?this device too|join here too)$/i,
+      { exact: true },
+    );
+    const joinOnThisDeviceButton = joinOnThisDevice
+      .first()
+      .locator("xpath=ancestor-or-self::button[1]");
 
     try {
-      await joinButton.first().waitFor({ state: "visible", timeout: 10_000 });
+      await Promise.any([
+        joinButton.first().waitFor({ state: "visible", timeout: 10_000 }),
+        otherJoinMethods.first().waitFor({ state: "visible", timeout: 10_000 }),
+        joinOnThisDevice.first().waitFor({ state: "visible", timeout: 10_000 }),
+      ]);
       await page.waitForTimeout(options.joinDelay * 1_000);
-      // The controller panel can overlap Meet's lower-right join button.
-      await joinButton.first().click({ timeout: 5_000, force: true });
+      if (await locatorIsVisible(joinButton)) {
+        // The controller panel can overlap Meet's lower-right join button.
+        await joinButton.first().click({ timeout: 5_000, force: true });
+      } else if (await locatorIsVisible(joinOnThisDevice)) {
+        await activateLocator(joinOnThisDeviceButton, { method: "dom", timeout: 5_000 });
+      } else {
+        // A Google account already present in the call gets a device-switch UI
+        // instead of Join now. Join as a second device so the GPT participant
+        // retains its own audio path; Companion mode does not provide that path.
+        await otherJoinMethods.first().click({ timeout: 5_000, force: true });
+        await joinOnThisDevice.first().waitFor({ state: "visible", timeout: 5_000 });
+        await activateLocator(joinOnThisDeviceButton, { method: "dom", timeout: 5_000 });
+      }
 
       await page
         .waitForFunction(
