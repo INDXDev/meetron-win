@@ -90,6 +90,7 @@ const pipeline = await runSessionLaunchPipeline({
   provider: {
     id: "google-meet",
     label: "Google Meet",
+    automation: { manualActionReason: "camera-check" },
     capabilities: { postJoinMicrophone: "unmuted" },
   },
   operations: pipelineOperations,
@@ -102,6 +103,36 @@ assert.deepEqual(pipelineCalls, [
   ["prepareParticipant"],
   ["setPostJoinMicrophone", "unmuted"],
 ]);
+
+const manualCalls = [];
+const manualPipeline = await runSessionLaunchPipeline({
+  provider: {
+    id: "google-meet",
+    label: "Google Meet",
+    automation: { manualActionReason: "camera-check" },
+    capabilities: { postJoinMicrophone: "unmuted" },
+  },
+  operations: {
+    installControlUi: async () => manualCalls.push("install"),
+    configureAudio: async () => manualCalls.push("audio-configure"),
+    startVoice: async () => manualCalls.push("voice"),
+    prepareParticipant: async () => {
+      manualCalls.push("participant");
+      return { manualActionRequired: true };
+    },
+    setPostJoinMicrophone: async () => manualCalls.push("mic"),
+    closeParticipantBrowser: async () => manualCalls.push("browser-close"),
+    restoreAudio: async () => manualCalls.push("audio-restore"),
+  },
+});
+assert.deepEqual(manualPipeline, {
+  providerId: "google-meet",
+  providerLabel: "Google Meet",
+  postJoinMicrophone: "unmuted",
+  manualActionRequired: true,
+  actionRequired: "camera-check",
+});
+assert.deepEqual(manualCalls, ["install", "audio-configure", "voice", "participant"]);
 
 const failureCalls = [];
 await assert.rejects(runSessionLaunchPipeline({

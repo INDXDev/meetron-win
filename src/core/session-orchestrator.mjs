@@ -126,14 +126,19 @@ export async function runSessionLaunchPipeline({ provider, operations }) {
     audioConfigured = true;
     await operations.startVoice();
     participantBrowserStarted = true;
-    await operations.prepareParticipant();
-    if (provider.capabilities.postJoinMicrophone === "unmuted") {
+    const preparation = await operations.prepareParticipant();
+    const manualActionRequired = preparation?.manualActionRequired === true;
+    if (!manualActionRequired && provider.capabilities.postJoinMicrophone === "unmuted") {
       await operations.setPostJoinMicrophone("unmuted");
     }
     return {
       providerId: provider.id,
       providerLabel: provider.label,
       postJoinMicrophone: provider.capabilities.postJoinMicrophone,
+      manualActionRequired,
+      ...(manualActionRequired && {
+        actionRequired: preparation.actionRequired || provider.automation.manualActionReason,
+      }),
     };
   } catch (error) {
     if (participantBrowserStarted) {

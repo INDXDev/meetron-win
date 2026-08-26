@@ -14,11 +14,23 @@ await context.addInitScript(() => {
   globalThis.__nativeRequests = [];
   globalThis.__storageWrites = [];
   globalThis.__activeProvider = "google-meet";
+  globalThis.__microphoneState = "muted";
+  globalThis.__microphoneDelayMs = 0;
+  globalThis.__microphoneFailure = false;
+  globalThis.__microphoneLateSuccess = false;
+  globalThis.__statusFailureOnce = false;
   globalThis.chrome = {
     runtime: {
       id: "jlikakgdldiihhflkobhnpfegjlcakdd",
       sendMessage: async ({ request }) => {
         globalThis.__nativeRequests.push(request);
+        if (
+          globalThis.__statusFailureOnce &&
+          ["status.get", "session.status.get"].includes(request.type)
+        ) {
+          globalThis.__statusFailureOnce = false;
+          return { ok: false, error: "Native Host request timed out." };
+        }
         if (request.type === "diagnostics.run") {
           return { ok: true, data: { ok: true, output: "All checks passed." } };
         }
@@ -50,8 +62,48 @@ await context.addInitScript(() => {
             },
           };
         }
+        if (request.type === "participant.mic.set") {
+          if (globalThis.__microphoneDelayMs) {
+            await new Promise((resolveDelay) => setTimeout(resolveDelay, globalThis.__microphoneDelayMs));
+          }
+          if (globalThis.__microphoneLateSuccess) {
+            globalThis.__microphoneState = request.payload.state;
+            return { ok: false, error: "Native Host request timed out." };
+          }
+          if (globalThis.__microphoneFailure) {
+            return { ok: false, error: "マイク操作に失敗しました" };
+          }
+          globalThis.__microphoneState = request.payload.state;
+          return {
+            ok: true,
+            data: { status: "ok", after: globalThis.__microphoneState, verified: true },
+          };
+        }
         if (["meet.mic.toggle", "participant.mic.toggle"].includes(request.type)) {
-          return { ok: true, data: { status: "ok", after: "unmuted", verified: true } };
+          globalThis.__microphoneState = globalThis.__microphoneState === "muted"
+            ? "unmuted"
+            : "muted";
+          return {
+            ok: true,
+            data: { status: "ok", after: globalThis.__microphoneState, verified: true },
+          };
+        }
+        if (request.type === "visual-context.screenshot.send") {
+          if (globalThis.__screenshotFailure) {
+            return {
+              ok: false,
+              error: "ChatGPTへの送信完了を確認できませんでした",
+              errorData: {
+                code: "CHATGPT_SEND_CONFIRM_TIMEOUT",
+                message: "ChatGPTへの送信完了を確認できませんでした",
+                details: { stage: "sent-confirm" },
+              },
+            };
+          }
+          return {
+            ok: true,
+            data: { sent: true, width: 1280, height: 720, bytes: 84_000 },
+          };
         }
         if (request.type === "setup.status") {
           if (globalThis.__hostDisconnected) {
@@ -133,8 +185,38 @@ await context.addInitScript(() => {
                 connection: "not-running",
                 microphone: "unavailable",
                 providerId: "zoom-web",
+                capabilities: { visualContext: "viewport-screenshot" },
               },
               meetingLaunch: { status: "running", providerId: "zoom-web" },
+            },
+          };
+        }
+        if (globalThis.__manualActionRequired) {
+          return {
+            ok: true,
+            data: {
+              host: { connected: true },
+              audio: { ready: true },
+              chatgpt: {
+                browserConnected: true,
+                voiceActive: true,
+                audioOutput: { routed: true, internalChecked: true },
+              },
+              dedicatedMeeting: {
+                browserConnected: true,
+                connection: "prejoin",
+                microphone: globalThis.__microphoneState,
+                providerId: "google-meet",
+                capabilities: { visualContext: "viewport-screenshot" },
+                url: "https://meet.google.com/abc-defg-hij",
+              },
+              meetingLaunch: {
+                status: "completed",
+                providerId: "google-meet",
+                manualActionRequired: true,
+                actionRequired: "camera-check",
+                meetingUrl: "https://meet.google.com/abc-defg-hij",
+              },
             },
           };
         }
@@ -145,15 +227,16 @@ await context.addInitScript(() => {
             audio: { ready: true },
             chatgpt: {
               browserConnected: true,
-              voiceActive: true,
+              voiceActive: !globalThis.__voiceInactive,
               microphoneOn: true,
               audioOutput: { routed: true, internalChecked: true },
             },
             dedicatedMeeting: {
               browserConnected: true,
               connection: "joined",
-              microphone: "muted",
+              microphone: globalThis.__microphoneState,
               providerId: globalThis.__activeProvider,
+              capabilities: { visualContext: "viewport-screenshot" },
               audioConnection: globalThis.__activeProvider === "zoom-web" ? "connected" : "unknown",
               url: globalThis.__activeProvider === "zoom-web"
                 ? "https://us02web.zoom.us/j/12345678901"
@@ -167,7 +250,7 @@ await context.addInitScript(() => {
                 : "https://meet.google.com/abc-defg-hij",
             },
             meetMicrophone: {
-              state: "muted",
+              state: globalThis.__microphoneState,
               meetingUrl: "https://meet.google.com/abc-defg-hij",
             },
           },
@@ -210,7 +293,8 @@ await context.route("https://meet.google.com/**", async (route) => {
 const page = await context.newPage();
 await page.goto("https://meet.google.com/abc-defg-hij");
 const script = (await readFile(resolve(repoRoot, "extension/content-script.js"), "utf8"))
-  .replace('attachShadow({ mode: "closed" })', 'attachShadow({ mode: "open" })');
+  .replace('attachShadow({ mode: "closed" })', 'attachShadow({ mode: "open" })')
+  .replace("10_000", "100");
 await page.evaluate(script);
 await page.waitForTimeout(800);
 
@@ -222,6 +306,8 @@ const initial = await page.evaluate(() => {
     voice: root?.querySelector("[data-voice-status]")?.textContent,
     audio: root?.querySelector("[data-audio-status]")?.textContent,
     mic: root?.querySelector("[data-mic] span")?.textContent,
+    screenshotDisabled: root?.querySelector("[data-screenshot]")?.disabled,
+    screenshotHidden: root?.querySelector("[data-screenshot]")?.hidden,
     buttons: [...document.querySelectorAll("button")].map((button) => ({
       label: button.getAttribute("aria-label"),
       text: button.textContent,
@@ -235,10 +321,82 @@ if (
   initial.meet !== "参加中・ミュート" ||
   initial.voice !== "起動中" ||
   initial.audio !== "正常" ||
-  initial.mic !== "ミュート解除"
+  initial.mic !== "ミュート解除" ||
+  initial.screenshotDisabled ||
+  initial.screenshotHidden
 ) {
   throw new Error(`Unexpected initial control UI: ${JSON.stringify(initial)}`);
 }
+
+await page.evaluate(() => {
+  document
+    .querySelector("#meeting-copilot-controls-root")
+    .shadowRoot.querySelector("[data-screenshot]")
+    .click();
+});
+if (
+  await page.evaluate(() =>
+    globalThis.__nativeRequests.some(
+      (entry) => entry.type === "visual-context.screenshot.send",
+    ),
+  )
+) {
+  throw new Error("An untrusted screenshot click reached the Native Host.");
+}
+
+await page.locator("#meeting-copilot-controls-root [data-screenshot]").click();
+await page.waitForFunction(() =>
+  document
+    .querySelector("#meeting-copilot-controls-root")
+    ?.shadowRoot.querySelector("[data-message]")
+    ?.textContent === "ChatGPTへ送信しました（1280×720 / 82 KB）",
+);
+const screenshotRequest = await page.evaluate(() =>
+  globalThis.__nativeRequests.filter(
+    (entry) => entry.type === "visual-context.screenshot.send",
+  ).length,
+);
+if (screenshotRequest !== 1) {
+  throw new Error(`Expected one trusted screenshot request, got ${screenshotRequest}.`);
+}
+
+await page.evaluate(() => { globalThis.__screenshotFailure = true; });
+await page.locator("#meeting-copilot-controls-root [data-screenshot]").click();
+await page.waitForFunction(() =>
+  document
+    .querySelector("#meeting-copilot-controls-root")
+    ?.shadowRoot.querySelector("[data-message]")
+    ?.textContent.includes("CHATGPT_SEND_CONFIRM_TIMEOUT / sent-confirm"),
+);
+await page.evaluate(() => { globalThis.__screenshotFailure = false; });
+
+await page.evaluate(() => { globalThis.__voiceInactive = true; });
+await page.locator("#meeting-copilot-controls-root [data-refresh]").click();
+await page.waitForFunction(() =>
+  document
+    .querySelector("#meeting-copilot-controls-root")
+    ?.shadowRoot.querySelector("[data-screenshot]")?.disabled === true,
+);
+await page.evaluate(() => { globalThis.__voiceInactive = false; });
+await page.locator("#meeting-copilot-controls-root [data-refresh]").click();
+await page.waitForFunction(() =>
+  document
+    .querySelector("#meeting-copilot-controls-root")
+    ?.shadowRoot.querySelector("[data-screenshot]")?.disabled === false,
+);
+
+await page.evaluate(() => { globalThis.__manualActionRequired = true; });
+await page.locator("#meeting-copilot-controls-root [data-refresh]").click();
+await page.waitForFunction(() => {
+  const root = document.querySelector("#meeting-copilot-controls-root")?.shadowRoot;
+  return (
+    root?.querySelector("[data-meet-status]")?.textContent === "手動参加待ち" &&
+    root?.querySelector("[data-message]")?.textContent.includes("カメラをオフにして") &&
+    root?.querySelector("[data-screenshot]")?.disabled === true
+  );
+});
+await page.evaluate(() => { globalThis.__manualActionRequired = false; });
+await page.locator("#meeting-copilot-controls-root [data-refresh]").click();
 
 await page.evaluate(() => {
   document
@@ -247,14 +405,53 @@ await page.evaluate(() => {
     .click();
 });
 const untrustedRequest = await page.evaluate(() =>
-  globalThis.__nativeRequests.some((entry) => entry.type === "participant.mic.toggle"),
+  globalThis.__nativeRequests.some((entry) => entry.type === "participant.mic.set"),
 );
 if (untrustedRequest) {
   throw new Error("An untrusted page-generated click reached the Native Host.");
 }
 
+await page.evaluate(() => {
+  globalThis.__microphoneDelayMs = 300;
+  globalThis.__statusFailureOnce = true;
+  globalThis.__backgroundMessages = [];
+  const message = document
+    .querySelector("#meeting-copilot-controls-root")
+    ?.shadowRoot.querySelector("[data-message]");
+  new MutationObserver(() => {
+    globalThis.__backgroundMessages.push({
+      text: message.textContent,
+      error: message.classList.contains("error"),
+    });
+  }).observe(message, { childList: true, attributes: true, subtree: true });
+});
 await page.locator("#meeting-copilot-controls-root [data-mic]").click();
-await page.waitForTimeout(900);
+const pendingUnmute = await page.evaluate(() => {
+  const root = document.querySelector("#meeting-copilot-controls-root")?.shadowRoot;
+  return {
+    mic: root?.querySelector("[data-mic] span")?.textContent,
+    disabled: root?.querySelector("[data-mic]")?.disabled,
+    message: root?.querySelector("[data-message]")?.textContent,
+  };
+});
+if (
+  pendingUnmute.mic !== "ミュート" ||
+  pendingUnmute.disabled !== true ||
+  pendingUnmute.message !== "ミュートを解除しています"
+) {
+  throw new Error(`Remote microphone did not update optimistically: ${JSON.stringify(pendingUnmute)}`);
+}
+await page.waitForFunction(() =>
+  document
+    .querySelector("#meeting-copilot-controls-root")
+    ?.shadowRoot.querySelector("[data-message]")
+    ?.textContent === "GPT参加者のミュートを解除しました",
+);
+const backgroundMessages = await page.evaluate(() => globalThis.__backgroundMessages);
+if (backgroundMessages.some((entry) => entry.error)) {
+  throw new Error(`Background status polling flashed an error: ${JSON.stringify(backgroundMessages)}`);
+}
+await page.evaluate(() => { globalThis.__microphoneDelayMs = 0; });
 
 const after = await page.evaluate(() => {
   const root = document.querySelector("#meeting-copilot-controls-root").shadowRoot;
@@ -262,8 +459,8 @@ const after = await page.evaluate(() => {
     meet: root.querySelector("[data-meet-status]").textContent,
     mic: root.querySelector("[data-mic] span").textContent,
     message: root.querySelector("[data-message]").textContent,
-    nativeRequested: globalThis.__nativeRequests.some(
-      (entry) => entry.type === "participant.mic.toggle",
+    nativeRequest: globalThis.__nativeRequests.find(
+      (entry) => entry.type === "participant.mic.set",
     ),
     userMicrophoneLabel: document.querySelector("#meet-mic").getAttribute("aria-label"),
   };
@@ -273,11 +470,68 @@ if (
   after.meet !== "参加中・送話中" ||
   after.mic !== "ミュート" ||
   after.message !== "GPT参加者のミュートを解除しました" ||
-  !after.nativeRequested ||
+  after.nativeRequest?.payload?.state !== "unmuted" ||
   !after.userMicrophoneLabel.includes("マイクをオフにする")
 ) {
   throw new Error(`Remote GPT microphone control did not stay isolated: ${JSON.stringify(after)}`);
 }
+
+await page.locator("#meeting-copilot-controls-root [data-mic]").click();
+await page.waitForFunction(() => {
+  const root = document.querySelector("#meeting-copilot-controls-root")?.shadowRoot;
+  return (
+    root?.querySelector("[data-mic] span")?.textContent === "ミュート解除" &&
+    root?.querySelector("[data-message]")?.textContent === "GPT参加者をミュートしました"
+  );
+});
+const muteRequest = await page.evaluate(() =>
+  globalThis.__nativeRequests.filter((entry) => entry.type === "participant.mic.set").at(-1),
+);
+if (muteRequest?.payload?.state !== "muted") {
+  throw new Error(`Remote GPT microphone mute was not explicit: ${JSON.stringify(muteRequest)}`);
+}
+
+await page.evaluate(() => { globalThis.__microphoneFailure = true; });
+await page.locator("#meeting-copilot-controls-root [data-mic]").click();
+await page.waitForFunction(() => {
+  const root = document.querySelector("#meeting-copilot-controls-root")?.shadowRoot;
+  return root?.querySelector("[data-message]")?.textContent === "マイク操作に失敗しました";
+});
+const rolledBack = await page.evaluate(() => {
+  const root = document.querySelector("#meeting-copilot-controls-root")?.shadowRoot;
+  return {
+    mic: root?.querySelector("[data-mic] span")?.textContent,
+    status: root?.querySelector("[data-meet-status]")?.textContent,
+  };
+});
+if (rolledBack.mic !== "ミュート解除" || rolledBack.status !== "参加中・ミュート") {
+  throw new Error(`Remote microphone failure did not roll back: ${JSON.stringify(rolledBack)}`);
+}
+await page.evaluate(() => {
+  globalThis.__microphoneFailure = false;
+  globalThis.__microphoneLateSuccess = true;
+  globalThis.__microphoneMessages = [];
+  const message = document
+    .querySelector("#meeting-copilot-controls-root")
+    ?.shadowRoot.querySelector("[data-message]");
+  new MutationObserver(() => {
+    globalThis.__microphoneMessages.push({
+      text: message.textContent,
+      error: message.classList.contains("error"),
+    });
+  }).observe(message, { childList: true, attributes: true, subtree: true });
+});
+await page.locator("#meeting-copilot-controls-root [data-mic]").click();
+await page.waitForFunction(() => {
+  const root = document.querySelector("#meeting-copilot-controls-root")?.shadowRoot;
+  return root?.querySelector("[data-message]")?.textContent ===
+    "GPT参加者のミュートを解除しました";
+});
+const lateSuccessMessages = await page.evaluate(() => globalThis.__microphoneMessages);
+if (lateSuccessMessages.some((entry) => entry.error)) {
+  throw new Error(`Late microphone success flashed an error: ${JSON.stringify(lateSuccessMessages)}`);
+}
+await page.evaluate(() => { globalThis.__microphoneLateSuccess = false; });
 
 await page.locator("#meeting-copilot-controls-root [data-diagnostics]").click();
 await page.waitForFunction(() =>
@@ -312,6 +566,7 @@ await context.route("https://app.zoom.us/**", async (route) => {
 });
 const zoomPage = await context.newPage();
 await zoomPage.goto("https://app.zoom.us/wc/12345678901/join");
+await zoomPage.evaluate(() => { globalThis.__activeProvider = "zoom-web"; });
 await zoomPage.evaluate(script);
 await zoomPage.waitForTimeout(500);
 const zoomPanel = await zoomPage.evaluate(() => {
@@ -320,11 +575,25 @@ const zoomPanel = await zoomPage.evaluate(() => {
     exists: Boolean(root),
     meeting: root?.querySelector("[data-meet-status]")?.textContent,
     mic: root?.querySelector("[data-mic] span")?.textContent,
+    screenshotHidden: root?.querySelector("[data-screenshot]")?.hidden,
+    screenshotDisabled: root?.querySelector("[data-screenshot]")?.disabled,
   };
 });
-if (!zoomPanel.exists || zoomPanel.meeting !== "参加中・ミュート" || zoomPanel.mic !== "ミュート解除") {
+if (
+  !zoomPanel.exists ||
+  zoomPanel.meeting !== "参加中・ミュート" ||
+  zoomPanel.mic !== "ミュート解除" ||
+  zoomPanel.screenshotHidden ||
+  zoomPanel.screenshotDisabled
+) {
   throw new Error(`Zoom page did not receive the persistent controls: ${JSON.stringify(zoomPanel)}`);
 }
+await zoomPage.locator("#meeting-copilot-controls-root [data-screenshot]").click();
+await zoomPage.waitForFunction(() =>
+  globalThis.__nativeRequests.some(
+    (entry) => entry.type === "visual-context.screenshot.send",
+  ),
+);
 await zoomPage.evaluate(() => { globalThis.__launchInProgress = true; });
 await zoomPage.locator("#meeting-copilot-controls-root [data-refresh]").click();
 await zoomPage.waitForTimeout(100);
@@ -401,9 +670,34 @@ await popup.waitForFunction(() =>
   document.querySelector("[data-session-provider]")?.textContent.includes("Zoom") &&
   !document.querySelector("[data-session-controls]")?.hidden,
 );
+const statusRequestsBeforeMicrophone = await popup.evaluate(() =>
+  globalThis.__nativeRequests.filter((entry) => entry.type === "session.status.get").length,
+);
+await popup.evaluate(() => { globalThis.__microphoneDelayMs = 300; });
+await popup.locator("[data-session-mic]").click();
+const popupPendingUnmute = await popup.evaluate(() => ({
+  mic: document.querySelector("[data-session-mic]")?.textContent,
+  disabled: document.querySelector("[data-session-mic]")?.disabled,
+  message: document.querySelector("[data-message]")?.textContent,
+}));
+if (
+  popupPendingUnmute.mic !== "ミュート" ||
+  popupPendingUnmute.disabled !== true ||
+  popupPendingUnmute.message !== "ミュートを解除しています"
+) {
+  throw new Error(`Popup microphone did not update optimistically: ${JSON.stringify(popupPendingUnmute)}`);
+}
+await popup.waitForFunction(() =>
+  globalThis.__nativeRequests.some((entry) => entry.type === "participant.mic.set") &&
+  document.querySelector("[data-session-mic]")?.textContent === "ミュート" &&
+  document.querySelector("[data-message]")?.textContent === "ミュートを解除しました",
+);
+await popup.evaluate(() => { globalThis.__microphoneDelayMs = 0; });
 await popup.locator("[data-session-mic]").click();
 await popup.waitForFunction(() =>
-  globalThis.__nativeRequests.some((entry) => entry.type === "participant.mic.toggle"),
+  globalThis.__nativeRequests.filter((entry) => entry.type === "participant.mic.set").length === 2 &&
+  document.querySelector("[data-session-mic]")?.textContent === "ミュート解除" &&
+  document.querySelector("[data-message]")?.textContent === "マイクをミュートしました",
 );
 const zoomPopupResult = await popup.evaluate(() => ({
   request: [...globalThis.__nativeRequests]
@@ -411,19 +705,61 @@ const zoomPopupResult = await popup.evaluate(() => ({
     .find((entry) => entry.type === "session.start"),
   storage: globalThis.__storageWrites.at(-1),
   guide: document.querySelector('[data-provider-guide="zoom-web"]')?.textContent,
-  micRequested: globalThis.__nativeRequests.some(
-    (entry) => entry.type === "participant.mic.toggle",
-  ),
+  micStates: globalThis.__nativeRequests
+    .filter((entry) => entry.type === "participant.mic.set")
+    .map((entry) => entry.payload.state),
+  statusRequests: globalThis.__nativeRequests
+    .filter((entry) => entry.type === "session.status.get").length,
 }));
 if (
   zoomPopupResult.request?.payload?.meetingUrl !==
     "https://us02web.zoom.us/j/12345678901?pwd=do-not-store&utm_source=test" ||
   zoomPopupResult.storage?.lastMeetingUrl !== "" ||
-  !zoomPopupResult.micRequested ||
+  JSON.stringify(zoomPopupResult.micStates) !== JSON.stringify(["unmuted", "muted"]) ||
+  zoomPopupResult.statusRequests !== statusRequestsBeforeMicrophone ||
   !zoomPopupResult.guide?.includes("ブラウザから参加")
 ) {
   throw new Error(`Popup Zoom guide or secret storage failed: ${JSON.stringify(zoomPopupResult)}`);
 }
+await popup.evaluate(() => { globalThis.__microphoneFailure = true; });
+await popup.locator("[data-session-mic]").click();
+await popup.waitForFunction(() =>
+  document.querySelector("[data-message]")?.textContent === "マイク操作に失敗しました",
+);
+const popupRollback = await popup.evaluate(() => ({
+  mic: document.querySelector("[data-session-mic]")?.textContent,
+  connection: document.querySelector("[data-session-connection]")?.textContent,
+}));
+if (popupRollback.mic !== "ミュート解除" || popupRollback.connection !== "参加中・ミュート") {
+  throw new Error(`Popup microphone failure did not roll back: ${JSON.stringify(popupRollback)}`);
+}
+await popup.evaluate(() => {
+  globalThis.__microphoneFailure = false;
+  globalThis.__microphoneLateSuccess = true;
+  globalThis.__microphoneMessages = [];
+  const message = document.querySelector("[data-message]");
+  new MutationObserver(() => {
+    globalThis.__microphoneMessages.push({
+      text: message.textContent,
+      error: message.classList.contains("error"),
+    });
+  }).observe(message, { childList: true, attributes: true, subtree: true });
+});
+await popup.locator("[data-session-mic]").click();
+await popup.waitForFunction(() =>
+  document.querySelector("[data-message]")?.textContent === "ミュートを解除しました",
+);
+const popupLateSuccess = await popup.evaluate(() => ({
+  mic: document.querySelector("[data-session-mic]")?.textContent,
+  messages: globalThis.__microphoneMessages,
+}));
+if (
+  popupLateSuccess.mic !== "ミュート" ||
+  popupLateSuccess.messages.some((entry) => entry.error)
+) {
+  throw new Error(`Popup late microphone success was not absorbed: ${JSON.stringify(popupLateSuccess)}`);
+}
+await popup.evaluate(() => { globalThis.__microphoneLateSuccess = false; });
 await popup.screenshot({ path: "/tmp/meeting-copilot-popup-ui.png" });
 
 const setupPopup = await context.newPage();

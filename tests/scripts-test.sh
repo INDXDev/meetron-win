@@ -551,6 +551,11 @@ elif [ -x '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' ]; then
   else
     fail 'extension UI browser test'
   fi
+  if node "$repo_root/tests/chatgpt-web-test.mjs" >/dev/null; then
+    pass 'ChatGPT Voice screenshot attachment flow'
+  else
+    fail 'ChatGPT Voice screenshot attachment flow'
+  fi
   if node "$repo_root/tests/unified-profile-test.mjs" >/dev/null; then
     pass 'unified profile preserves Meet during Voice restart'
   else

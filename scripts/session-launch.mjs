@@ -28,7 +28,7 @@ try {
   process.exit(2);
 }
 
-function run(command, args = [], { input = null } = {}) {
+function run(command, args = [], { input = null, acceptedExitCodes = [0] } = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(command, args, {
       cwd: repoRoot,
@@ -37,8 +37,8 @@ function run(command, args = [], { input = null } = {}) {
     });
     child.on("error", rejectPromise);
     child.on("close", (code, signal) => {
-      if (code === 0) {
-        resolvePromise();
+      if (acceptedExitCodes.includes(code)) {
+        resolvePromise({ exitCode: code });
         return;
       }
       const error = new Error(`Session operation stopped (${code ?? signal})`);
@@ -57,11 +57,16 @@ const operations = {
   installControlUi: () => run(resolve(repoRoot, "scripts/install-control-ui.sh"), ["--quiet"]),
   configureAudio: () => run(resolve(repoRoot, "scripts/configure-audio.sh")),
   startVoice: () => run(resolve(repoRoot, "scripts/open-chatgpt-live.sh"), ["--restart-profile"]),
-  prepareParticipant: () => run(
-    resolve(repoRoot, "scripts/open-gpt-participant.sh"),
-    ["--url-stdin", "--join"],
-    { input: `${meeting.url}\n` },
-  ),
+  prepareParticipant: async () => {
+    const preparation = await run(
+      resolve(repoRoot, "scripts/open-gpt-participant.sh"),
+      ["--url-stdin", "--join"],
+      { input: `${meeting.url}\n`, acceptedExitCodes: [0, 16] },
+    );
+    return {
+      manualActionRequired: preparation.exitCode === 16,
+    };
+  },
   setPostJoinMicrophone: (state) => run(process.execPath, [
     resolve(repoRoot, "scripts/set-participant-mic.mjs"),
     "--provider", provider.id,
@@ -82,11 +87,17 @@ const operations = {
 
 try {
   const result = await runSessionLaunchPipeline({ provider, operations });
-  process.stdout.write(`\nChatGPT Voice is active and the Meetron participant has started ${result.providerLabel}.\n`);
-  if (result.postJoinMicrophone === "unmuted") {
-    process.stdout.write("The meeting microphone is unmuted; Project instructions control when ChatGPT speaks.\n");
+  if (result.manualActionRequired) {
+    process.stdout.write(`\n${result.providerLabel} needs a manual check. The dedicated Chrome window will remain open.\n`);
+    process.stdout.write("Complete the indicated check and join from that window; post-join microphone automation was skipped.\n");
+    process.exitCode = 16;
   } else {
-    process.stdout.write("Meetron audio routing is enabled and the meeting microphone remains muted for safety.\n");
+    process.stdout.write(`\nChatGPT Voice is active and the Meetron participant has started ${result.providerLabel}.\n`);
+    if (result.postJoinMicrophone === "unmuted") {
+      process.stdout.write("The meeting microphone is unmuted; Project instructions control when ChatGPT speaks.\n");
+    } else {
+      process.stdout.write("Meetron audio routing is enabled and the meeting microphone remains muted for safety.\n");
+    }
   }
 } catch (error) {
   process.exitCode = error.exitCode || 1;

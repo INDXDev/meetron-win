@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryDir = mkdtempSync(resolve(tmpdir(), "meeting-copilot-native-test-"));
 const profileDir = resolve(temporaryDir, "profile");
+const runtimeDir = resolve(temporaryDir, "runtime");
 mkdirSync(resolve(profileDir, "Default"), { recursive: true });
 writeFileSync(
   resolve(profileDir, "Default/Secure Preferences"),
@@ -31,7 +32,11 @@ const child = spawn(
   ],
   {
   cwd: repoRoot,
-  env: { ...process.env, MEETING_COPILOT_PROFILE_DIR: profileDir },
+  env: {
+    ...process.env,
+    MEETING_COPILOT_PROFILE_DIR: profileDir,
+    MEETING_COPILOT_RUNTIME_DIR: runtimeDir,
+  },
   stdio: ["pipe", "pipe", "pipe"],
   },
 );
@@ -53,6 +58,7 @@ child.stdin.end(Buffer.concat([
   frame({ id: "test-invalid-project", type: "setup.project.save", payload: { projectUrl: "https://example.com/project" } }),
   frame({ id: "test-invalid-confirmation", type: "setup.confirm", payload: { step: "unknown", complete: true } }),
   frame({ id: "test-setup-status", type: "setup.status" }),
+  frame({ id: "test-screenshot-log", type: "visual-context.screenshot.send" }),
 ]));
 
 const timeout = setTimeout(() => {
@@ -74,7 +80,7 @@ child.stdout.on("data", (chunk) => {
     output = output.subarray(length + 4);
   }
 
-  if (responses.length < 7) {
+  if (responses.length < 8) {
     return;
   }
   clearTimeout(timeout);
@@ -86,6 +92,8 @@ child.stdout.on("data", (chunk) => {
   const invalidProject = responses.find((response) => response.id === "test-invalid-project");
   const invalidConfirmation = responses.find((response) => response.id === "test-invalid-confirmation");
   const setupStatus = responses.find((response) => response.id === "test-setup-status");
+  const screenshotFailure = responses.find((response) => response.id === "test-screenshot-log");
+  const visualContextLog = readFileSync(resolve(runtimeDir, "visual-context.log"), "utf8");
   if (
     ping?.ok !== true ||
     ping.protocolVersion !== 1 ||
@@ -105,7 +113,13 @@ child.stdout.on("data", (chunk) => {
     setupStatus?.ok !== true ||
     setupStatus.data?.dedicatedChrome?.extensionInstalled !== true ||
     setupStatus.data?.dedicatedChrome?.sharedProfile !== true ||
-    setupStatus.data?.confirmations?.profileLayoutVersion !== 2
+    setupStatus.data?.confirmations?.profileLayoutVersion !== 2 ||
+    screenshotFailure?.ok !== false ||
+    !visualContextLog.includes('"event":"failed"') ||
+    !visualContextLog.includes('"code":"MEETING_NOT_JOINED"') ||
+    visualContextLog.includes("meet.google.com") ||
+    visualContextLog.includes("zoom.us") ||
+    visualContextLog.includes("meetron-screen-")
   ) {
     rmSync(temporaryDir, { recursive: true, force: true });
     process.stderr.write(`Unexpected Native Host responses: ${JSON.stringify(responses)}\n`);

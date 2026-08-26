@@ -217,12 +217,14 @@ export const zoomWebDefinition = Object.freeze({
     preparationScript: "prepare-zoom.mjs",
     urlTransport: "stdin",
     supportsJoinDelay: false,
+    manualActionReason: "provider-check",
   }),
   capabilities: Object.freeze({
     audioSelection: "provider-ui-and-browser-hook",
     camera: "optional-off",
     postJoinMicrophone: "muted",
     waitingRoom: true,
+    visualContext: "viewport-screenshot",
   }),
   matchUrl(value) {
     try {
@@ -553,4 +555,5 @@ export const zoomWebRuntimeProvider = createRuntimeProvider(zoomWebDefinition, {
   reconcileSession: reconcileZoomWebSession,
   setMicrophone: setZoomWebMicrophone,
   leave: leaveZoomWeb,
+  getVisualContextPage: findZoomPage,
 });

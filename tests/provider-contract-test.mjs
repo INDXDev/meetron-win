@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { normalizeGoogleMeetUrl } from "../src/providers/google-meet/google-meet-provider.mjs";
+import {
+  googleMeetDefinition,
+  normalizeGoogleMeetUrl,
+} from "../src/providers/google-meet/google-meet-provider.mjs";
+import { createRuntimeProvider } from "../src/providers/provider-contract.mjs";
 import {
   getMeetingProvider,
   normalizeMeeting,
@@ -71,17 +75,44 @@ const provider = getMeetingProvider("google-meet");
 assert.equal(provider.id, "google-meet");
 assert.equal(provider.label, "Google Meet");
 assert.equal(provider.capabilities.postJoinMicrophone, "unmuted");
+assert.equal(provider.capabilities.visualContext, "viewport-screenshot");
 assert.equal(provider.automation.preparationScript, "prepare-meet.mjs");
 assert.equal(provider.automation.initialPage, "meeting-display-url");
+assert.equal(provider.automation.manualActionReason, "camera-check");
 assert.equal(typeof provider.getStatus, "function");
 assert.equal(typeof provider.reconcileSession, "function");
 assert.equal(typeof provider.setMicrophone, "function");
 assert.equal(typeof provider.leave, "function");
+assert.equal(typeof provider.getVisualContextPage, "function");
 assert.throws(() => getMeetingProvider("unknown-provider"));
 const zoomProvider = getMeetingProvider("zoom-web");
 assert.equal(zoomProvider.capabilities.postJoinMicrophone, "muted");
+assert.equal(zoomProvider.capabilities.visualContext, "viewport-screenshot");
 assert.equal(zoomProvider.automation.urlTransport, "stdin");
 assert.equal(zoomProvider.automation.initialPage, "blank");
+assert.equal(zoomProvider.automation.manualActionReason, "provider-check");
+assert.equal(typeof zoomProvider.getVisualContextPage, "function");
+
+const runtimeOperations = {
+  getStatus: async () => ({}),
+  reconcileSession: async () => ({}),
+  setMicrophone: async () => ({}),
+  leave: async () => ({}),
+};
+assert.throws(
+  () => createRuntimeProvider(googleMeetDefinition, runtimeOperations),
+  (error) => error.code === "INVALID_PROVIDER" && /visual context/.test(error.message),
+);
+assert.throws(
+  () => createRuntimeProvider(
+    {
+      ...googleMeetDefinition,
+      capabilities: { ...googleMeetDefinition.capabilities, visualContext: undefined },
+    },
+    { ...runtimeOperations, getVisualContextPage: () => null },
+  ),
+  (error) => error.code === "INVALID_PROVIDER" && /visual context/.test(error.message),
+);
 
 const meetPlan = createProviderPreparationPlan(provider, normalized, {
   cdp: "http://127.0.0.1:9223",
