@@ -65,9 +65,15 @@ jobs:
             Export-Certificate -Cert $certificate -FilePath dist/windows/Meetron-Local-Test.cer | Out-Null
             Import-Certificate -FilePath dist/windows/Meetron-Local-Test.cer `
               -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
-            Get-ChildItem $stage -Recurse -File -Include *.exe,*.dll | ForEach-Object {
-              & $signtool sign /fd SHA256 /sha1 $certificate.Thumbprint /s My $_.FullName
-              if ($LASTEXITCODE -ne 0) { throw "Test signing failed: $($_.FullName)" }
+            $signingTargets = @(Get-ChildItem $stage -Recurse -File -Include *.exe,*.dll |
+              Select-Object -ExpandProperty FullName)
+            for ($offset = 0; $offset -lt $signingTargets.Count; $offset += 24) {
+              $last = [Math]::Min($offset + 23, $signingTargets.Count - 1)
+              $batch = @($signingTargets[$offset..$last])
+              & $signtool sign /fd SHA256 /sha1 $certificate.Thumbprint /s My @batch
+              if ($LASTEXITCODE -ne 0) {
+                throw "Test signing failed for batch beginning at: $($batch[0])"
+              }
             }
             npm run verify:windows-package -- --stage $stage `
               --publisher 'CN=Meetron Local Test' --allow-test-signature
