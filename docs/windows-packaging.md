@@ -51,13 +51,16 @@ The filename contains `LOCAL-TEST`, and release verification rejects it. An
 unsigned MSIX is useful for deterministic layout, manifest, checksum, bundled
 runtime, and Phase 3 contract tests, but Windows will not install it normally.
 CI additionally signs that artifact with a disposable, non-exportable
-`CN=Meetron Local Test` certificate, trusts it only in the ephemeral runner,
-verifies the launch-critical inner signatures and outer signature, installs it, refreshes Native
-Messaging, checks the Chrome login-state sentinel, and removes the package and
-certificate in a `finally` block. The explicit `--allow-test-certificate` flag
-accepts only that subject and only a `LOCAL-TEST` filename. Never publish a
-local certificate or its private key, and do not run the install test against a
-real user profile.
+`CN=Meetron Local Test` certificate and places only its public certificate in
+the ephemeral runner's Current User `TrustedPeople` store. Separate bounded CI
+steps create the certificate, sign and verify the launch-critical inner files,
+sign and checksum the outer package, install/update it, and always clean up the
+exact certificate thumbprint and package. The local verifier requires intact
+Authenticode content and the exact test subject, while explicitly tolerating
+only the self-signed certificate's untrusted-root status; this exception cannot
+select release mode. The install step refreshes Native Messaging and checks the
+Chrome login-state sentinel. Never publish a local certificate or its private
+key, and do not run the install test against a real user profile.
 
 ## HSM-backed release signing
 

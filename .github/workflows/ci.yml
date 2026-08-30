@@ -46,8 +46,106 @@ jobs:
           npm run package:windows:local -- --pack-stage dist/windows/ci-stage --output-dir dist/windows
           npm run verify:windows-package -- --msix "dist/windows/Meetron-$version-windows-x64-LOCAL-TEST.msix" --allow-unsigned
       - if: runner.os == 'Windows'
-        name: Test-sign, install, and update the local MSIX
-        timeout-minutes: 15
+        name: Create and trust disposable test certificate
+        timeout-minutes: 2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "[phase4] creating disposable certificate: $(Get-Date -Format o)"
+          $certificateJob = Start-Job -ScriptBlock {
+            (New-SelfSignedCertificate -Type CodeSigningCert `
+              -Subject 'CN=Meetron Local Test' -CertStoreLocation 'Cert:\CurrentUser\My' `
+              -KeyExportPolicy NonExportable -NotAfter (Get-Date).AddDays(2)).Thumbprint
+          }
+          try {
+            if (-not (Wait-Job $certificateJob -Timeout 30)) {
+              Stop-Job $certificateJob
+              throw 'Disposable certificate creation exceeded 30 seconds'
+            }
+            if ($certificateJob.State -ne 'Completed') {
+              Receive-Job $certificateJob
+              throw "Disposable certificate creation failed: $($certificateJob.State)"
+            }
+            $thumbprint = [string](Receive-Job $certificateJob)
+          }
+          finally {
+            Remove-Job $certificateJob -Force -ErrorAction SilentlyContinue
+          }
+          $thumbprintPath = (Resolve-Path 'dist/windows').Path + '\Meetron-Local-Test.thumbprint'
+          $thumbprint | Set-Content -NoNewline -Encoding ascii $thumbprintPath
+          "MEETRON_TEST_CERT_THUMBPRINT=$thumbprint" | Out-File `
+            -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $myStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+            'My', [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+          try {
+            $myStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
+            $myMatches = $myStore.Certificates.Find(
+              [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+              $thumbprint, $false)
+            if ($myMatches.Count -ne 1) {
+              throw "Disposable certificate lookup returned $($myMatches.Count) matches"
+            }
+            $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+              $myMatches[0])
+          }
+          finally {
+            $myStore.Close()
+          }
+          $certificatePath = (Resolve-Path 'dist/windows').Path + '\Meetron-Local-Test.cer'
+          Write-Host "[phase4] exporting disposable certificate: $(Get-Date -Format o)"
+          [System.IO.File]::WriteAllBytes(
+            $certificatePath,
+            $certificate.Export(
+              [System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+          Write-Host "[phase4] trusting disposable certificate in TrustedPeople: $(Get-Date -Format o)"
+          $testCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            $certificatePath)
+          $trustedPeople = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+            'TrustedPeople', [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+          try {
+            $trustedPeople.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+            $trustedPeople.Add($testCertificate)
+            $trustedMatches = $trustedPeople.Certificates.Find(
+              [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+              $thumbprint, $false)
+            if ($trustedMatches.Count -lt 1) {
+              throw 'Disposable TrustedPeople verification failed'
+            }
+          }
+          finally {
+            $trustedPeople.Close()
+          }
+          Write-Host "[phase4] disposable certificate trusted: $(Get-Date -Format o)"
+      - if: runner.os == 'Windows'
+        name: Sign and verify local Windows staging tree
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $stage = (Resolve-Path 'dist/windows/ci-stage').Path
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { throw 'signtool.exe was not found' }
+          Write-Host "[phase4] resolving launch-critical PE files: $(Get-Date -Format o)"
+          $signingTargets = @(
+            'Meetron.WindowsShell.exe',
+            'Meetron.WindowsShell.dll',
+            'native/windows/target/release/meetron-host.exe',
+            'native/windows/target/release/meetron-audioctl.exe',
+            'native/windows/target/release/meetron-credential.exe'
+          ) | ForEach-Object { (Resolve-Path (Join-Path $stage $_)).Path }
+          Write-Host "[phase4] signing launch-critical PE files: $(Get-Date -Format o)"
+          & $signtool sign /q /fd SHA256 /sha1 $env:MEETRON_TEST_CERT_THUMBPRINT `
+            /s My @signingTargets
+          if ($LASTEXITCODE -ne 0) { throw 'Test signing failed' }
+          Write-Host "[phase4] verifying signed stage: $(Get-Date -Format o)"
+          npm run verify:windows-package -- --stage $stage `
+            --publisher 'CN=Meetron Local Test' --allow-test-signature
+          Write-Host "[phase4] signed staging tree verified: $(Get-Date -Format o)"
+      - if: runner.os == 'Windows'
+        name: Pack, sign, and checksum local MSIX
+        timeout-minutes: 3
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -57,130 +155,67 @@ jobs:
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
             Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
           if (-not $signtool) { throw 'signtool.exe was not found' }
-          $certificate = $null
-          $thumbprint = $null
-          try {
-            Write-Host "[phase4] creating disposable certificate: $(Get-Date -Format o)"
-            $certificateJob = Start-Job -ScriptBlock {
-              (New-SelfSignedCertificate -Type CodeSigningCert `
-                -Subject 'CN=Meetron Local Test' -CertStoreLocation 'Cert:\CurrentUser\My' `
-                -KeyExportPolicy NonExportable -NotAfter (Get-Date).AddDays(2)).Thumbprint
-            }
-            try {
-              if (-not (Wait-Job $certificateJob -Timeout 30)) {
-                Stop-Job $certificateJob
-                throw 'Disposable certificate creation exceeded 30 seconds'
-              }
-              if ($certificateJob.State -ne 'Completed') {
-                Receive-Job $certificateJob
-                throw "Disposable certificate creation failed: $($certificateJob.State)"
-              }
-              $thumbprint = [string](Receive-Job $certificateJob)
-            }
-            finally {
-              Remove-Job $certificateJob -Force -ErrorAction SilentlyContinue
-            }
-            $myStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
-              'My', [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-            try {
-              $myStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
-              $myMatches = $myStore.Certificates.Find(
-                [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
-                $thumbprint, $false)
-              if ($myMatches.Count -ne 1) {
-                throw "Disposable certificate lookup returned $($myMatches.Count) matches"
-              }
-              $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
-                $myMatches[0])
-            }
-            finally {
-              $myStore.Close()
-            }
-            $certificatePath = (Resolve-Path 'dist/windows').Path + '\Meetron-Local-Test.cer'
-            Write-Host "[phase4] exporting disposable certificate: $(Get-Date -Format o)"
-            [System.IO.File]::WriteAllBytes(
-              $certificatePath,
-              $certificate.Export(
-                [System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-            Write-Host "[phase4] trusting disposable root noninteractively: $(Get-Date -Format o)"
-            $rootCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
-              $certificatePath)
-            $rootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
-              'Root', [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-            try {
-              $rootStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-              $rootStore.Add($rootCertificate)
-              $rootMatches = $rootStore.Certificates.Find(
-                [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
-                $thumbprint, $false)
-              if ($rootMatches.Count -lt 1) {
-                throw 'Disposable root trust verification failed'
-              }
-            }
-            finally {
-              $rootStore.Close()
-            }
-            Write-Host "[phase4] disposable root trusted: $(Get-Date -Format o)"
-            Write-Host "[phase4] resolving launch-critical PE files: $(Get-Date -Format o)"
-            $signingTargets = @(
-              'Meetron.WindowsShell.exe',
-              'Meetron.WindowsShell.dll',
-              'native/windows/target/release/meetron-host.exe',
-              'native/windows/target/release/meetron-audioctl.exe',
-              'native/windows/target/release/meetron-credential.exe'
-            ) | ForEach-Object { (Resolve-Path (Join-Path $stage $_)).Path }
-            Write-Host "[phase4] signing launch-critical PE files: $(Get-Date -Format o)"
-            & $signtool sign /q /fd SHA256 /sha1 $certificate.Thumbprint /s My @signingTargets
-            if ($LASTEXITCODE -ne 0) { throw 'Test signing failed' }
-            Write-Host "[phase4] verifying signed stage: $(Get-Date -Format o)"
-            npm run verify:windows-package -- --stage $stage `
-              --publisher 'CN=Meetron Local Test' --allow-test-signature
-            Write-Host "[phase4] packing and signing MSIX: $(Get-Date -Format o)"
-            npm run package:windows:local -- --pack-stage $stage --output-dir dist/windows/signed-test
-            $artifact = (Resolve-Path "dist/windows/signed-test/Meetron-$version-windows-x64-LOCAL-TEST.msix").Path
-            & $signtool sign /fd SHA256 /sha1 $certificate.Thumbprint /s My $artifact
-            if ($LASTEXITCODE -ne 0) { throw 'Test MSIX signing failed' }
-            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact).Hash.ToLowerInvariant()
-            "$hash  $(Split-Path $artifact -Leaf)" | Set-Content -Encoding ascii "$artifact.sha256"
-            $profile = Join-Path $env:LOCALAPPDATA 'Meetron\GPTParticipantChrome'
-            New-Item -ItemType Directory -Force $profile | Out-Null
-            'preserved-ci-login-state' | Set-Content -NoNewline (Join-Path $profile 'Local State')
-            Write-Host "[phase4] verifying, installing, and refreshing integration: $(Get-Date -Format o)"
-            node src/cli/update-meetron.mjs --package $artifact `
-              --publisher 'CN=Meetron Local Test' --allow-test-certificate
-            if ((Get-Content -Raw (Join-Path $profile 'Local State')) -ne 'preserved-ci-login-state') {
-              throw 'Chrome login state changed during MSIX update test'
-            }
-            Write-Host "[phase4] Chrome profile/login state preserved: $(Get-Date -Format o)"
+          Write-Host "[phase4] packing local MSIX: $(Get-Date -Format o)"
+          npm run package:windows:local -- --pack-stage $stage --output-dir dist/windows/signed-test
+          $artifact = (Resolve-Path "dist/windows/signed-test/Meetron-$version-windows-x64-LOCAL-TEST.msix").Path
+          Write-Host "[phase4] signing local MSIX: $(Get-Date -Format o)"
+          & $signtool sign /fd SHA256 /sha1 $env:MEETRON_TEST_CERT_THUMBPRINT /s My $artifact
+          if ($LASTEXITCODE -ne 0) { throw 'Test MSIX signing failed' }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $artifact -Leaf)" | Set-Content -Encoding ascii "$artifact.sha256"
+          Write-Host "[phase4] signed MSIX checksummed: $(Get-Date -Format o)"
+      - if: runner.os == 'Windows'
+        name: Install, update, and preserve Windows profile state
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $artifact = (Resolve-Path "dist/windows/signed-test/Meetron-$version-windows-x64-LOCAL-TEST.msix").Path
+          $profile = Join-Path $env:LOCALAPPDATA 'Meetron\GPTParticipantChrome'
+          New-Item -ItemType Directory -Force $profile | Out-Null
+          'preserved-ci-login-state' | Set-Content -NoNewline (Join-Path $profile 'Local State')
+          Write-Host "[phase4] verifying, installing, and refreshing integration: $(Get-Date -Format o)"
+          node src/cli/update-meetron.mjs --package $artifact `
+            --publisher 'CN=Meetron Local Test' --allow-test-certificate
+          if ((Get-Content -Raw (Join-Path $profile 'Local State')) -ne 'preserved-ci-login-state') {
+            throw 'Chrome login state changed during MSIX update test'
           }
-          finally {
-            Write-Host "[phase4] cleanup: $(Get-Date -Format o)"
-            $env:MEETRON_PLATFORM = 'win32'
-            try { node src/cli/install-control-ui.mjs --uninstall --quiet }
-            catch { Write-Warning "Native Messaging cleanup failed: $_" }
-            try { Get-AppxPackage -Name 'io.github.bb8ad8.meetron' | Remove-AppxPackage -ErrorAction Stop }
-            catch { Write-Warning "MSIX cleanup failed: $_" }
-            if ($thumbprint) {
-              foreach ($storeName in @('My', 'Root')) {
-                $cleanupStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
-                  $storeName, [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-                try {
-                  $cleanupStore.Open(
-                    [System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-                  $cleanupMatches = $cleanupStore.Certificates.Find(
-                    [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
-                    $thumbprint, $false)
-                  foreach ($cleanupCertificate in $cleanupMatches) {
-                    $cleanupStore.Remove($cleanupCertificate)
-                  }
-                }
-                finally {
-                  $cleanupStore.Close()
+          Write-Host "[phase4] Chrome profile/login state preserved: $(Get-Date -Format o)"
+      - if: always() && runner.os == 'Windows'
+        name: Clean up disposable Windows package state
+        timeout-minutes: 2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Host "[phase4] cleanup: $(Get-Date -Format o)"
+          $thumbprintPath = 'dist/windows/Meetron-Local-Test.thumbprint'
+          if (Test-Path -LiteralPath $thumbprintPath) {
+            $thumbprint = (Get-Content -Raw -LiteralPath $thumbprintPath).Trim()
+            foreach ($storeName in @('My', 'TrustedPeople')) {
+              $cleanupStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+                $storeName, [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+              try {
+                $cleanupStore.Open(
+                  [System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                $cleanupMatches = $cleanupStore.Certificates.Find(
+                  [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+                  $thumbprint, $false)
+                foreach ($cleanupCertificate in $cleanupMatches) {
+                  $cleanupStore.Remove($cleanupCertificate)
                 }
               }
+              catch { Write-Warning "$storeName certificate cleanup failed: $_" }
+              finally { $cleanupStore.Close() }
             }
-            Write-Host "[phase4] cleanup complete: $(Get-Date -Format o)"
           }
+          $env:MEETRON_PLATFORM = 'win32'
+          try { node src/cli/install-control-ui.mjs --uninstall --quiet }
+          catch { Write-Warning "Native Messaging cleanup failed: $_" }
+          try { Get-AppxPackage -Name 'io.github.bb8ad8.meetron' | Remove-AppxPackage -ErrorAction Stop }
+          catch { Write-Warning "MSIX cleanup failed: $_" }
+          Write-Host "[phase4] cleanup complete: $(Get-Date -Format o)"
       - if: runner.os == 'macOS'
         run: npm run test:native
       - if: runner.os == 'macOS'

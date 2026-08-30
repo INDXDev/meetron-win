@@ -22,7 +22,7 @@ Options:
   --publisher SUBJECT     Required Authenticode/MSIX publisher subject.
   --require-release       Require trusted signatures and reject LOCAL-TEST content.
   --allow-unsigned        Validate a LOCAL-TEST package structure without signatures.
-  --allow-test-signature  Verify a trusted self-signed LOCAL-TEST package (Windows only).
+  --allow-test-signature  Verify an integrity-valid self-signed LOCAL-TEST package (Windows only).
   --appinstaller PATH     Also validate its checksum and package identity.
 `;
 
@@ -119,7 +119,7 @@ async function signatureSubjects(paths) {
   writeFileSync(inputPath, JSON.stringify(paths), "utf8");
   const command = [
     "$paths = Get-Content -Raw -LiteralPath $env:MEETRON_SIGNATURE_PATHS | ConvertFrom-Json",
-    "$subjects = foreach ($path in $paths) { $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($path)); [pscustomobject]@{ Path = [string]$path; Subject = [string]$certificate.Subject } }",
+    "$subjects = foreach ($path in $paths) { $signature = Get-AuthenticodeSignature -LiteralPath $path; $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($path)); [pscustomobject]@{ Path = [string]$path; Subject = [string]$certificate.Subject; Status = [string]$signature.Status; StatusMessage = [string]$signature.StatusMessage } }",
     "$subjects | ConvertTo-Json -Compress",
   ].join("; ");
   const shell = process.env.SystemRoot
@@ -148,6 +148,22 @@ async function verifySignatures(paths, publisher, { requireTimestamp = true } = 
   await verifyTrustedSignatures(paths, { requireTimestamp });
 }
 
+async function verifyTestSignatures(paths, publisher) {
+  const subjects = await signatureSubjects(paths);
+  if (subjects.length !== paths.length) throw cliError("[ERROR] Authenticode signer inventory is incomplete.", 1);
+  for (const result of subjects) {
+    if (result.Subject !== publisher) {
+      throw cliError(`[ERROR] Authenticode signer subject does not match --publisher for ${result.Path} (subject=${result.Subject || "none"}).`, 1);
+    }
+    if (result.Status === "Valid") continue;
+    const untrustedSelfSigned = ["NotTrusted", "UnknownError"].includes(result.Status)
+      && /(?:root certificate|certificate chain).*(?:not trusted|untrusted)/i.test(result.StatusMessage || "");
+    if (!untrustedSelfSigned) {
+      throw cliError(`[ERROR] LOCAL-TEST Authenticode integrity is invalid for ${result.Path} (status=${result.Status || "none"}).`, 1);
+    }
+  }
+}
+
 async function verifyTrustedSignatures(paths, { requireTimestamp = true } = {}) {
   const signtool = findSdkTool("signtool.exe");
   for (let offset = 0; offset < paths.length; offset += 24) {
@@ -173,10 +189,9 @@ async function verifyStage(root, { publisher, release, signed = release, testSig
   if (publisher && identity.publisher !== publisher) throw cliError("[ERROR] Manifest publisher does not match --publisher.", 1);
   if (signed) {
     if (testSignature) {
-      await verifySignatures(
+      await verifyTestSignatures(
         TEST_SIGNED_BINARIES.map((path) => resolve(root, path)),
         publisher,
-        { requireTimestamp: false },
       );
       await verifyTrustedSignatures(
         TEST_VENDOR_BINARIES.map((path) => resolve(root, path)),
@@ -247,7 +262,8 @@ runMain(async () => {
   if (release && /LOCAL-TEST/i.test(basename(msix))) throw cliError("[ERROR] A LOCAL-TEST MSIX cannot pass release verification.", 1);
   if ((allowUnsigned || allowTestSignature) && !/LOCAL-TEST/i.test(basename(msix))) throw cliError("[ERROR] Local verification is allowed only for a LOCAL-TEST MSIX.", 1);
   verifyChecksum(msix);
-  if (release || allowTestSignature) await verifySignatures([msix], publisher, { requireTimestamp: release });
+  if (release) await verifySignatures([msix], publisher, { requireTimestamp: true });
+  else if (allowTestSignature) await verifyTestSignatures([msix], publisher);
   const unpackRoot = mkdtempSync(resolve(tmpdir(), "meetron-msix-verify-"));
   try {
     const makeappx = findSdkTool("makeappx.exe");

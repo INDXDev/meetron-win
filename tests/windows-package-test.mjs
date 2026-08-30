@@ -69,7 +69,9 @@ try {
   const verifyScript = readFileSync(resolve(repoRoot, "src/cli/verify-windows-release.mjs"), "utf8");
   assert.match(verifyScript, /Trusted timestamped Authenticode signature is invalid/);
   assert.match(verifyScript, /X509Certificate.*CreateFromSignedFile/);
-  assert.doesNotMatch(verifyScript, /Get-AuthenticodeSignature/);
+  assert.match(verifyScript, /Get-AuthenticodeSignature/);
+  assert.match(verifyScript, /LOCAL-TEST Authenticode integrity is invalid/);
+  assert.match(verifyScript, /verifyTestSignatures/);
   assert.match(verifyScript, /offset \+= 24/);
   assert.match(verifyScript, /TEST_SIGNED_BINARIES/);
   assert.match(verifyScript, /TEST_VENDOR_BINARIES/);
@@ -90,10 +92,14 @@ try {
   assert.match(ciWorkflow, /creating disposable certificate/);
   assert.match(ciWorkflow, /Wait-Job \$certificateJob -Timeout 30/);
   assert.match(ciWorkflow, /X509Store/);
-  assert.match(ciWorkflow, /'Root'.*StoreLocation\]::CurrentUser/s);
+  assert.match(ciWorkflow, /'TrustedPeople'.*StoreLocation\]::CurrentUser/s);
   assert.match(ciWorkflow, /OpenFlags\]::ReadWrite/);
   assert.match(ciWorkflow, /FindByThumbprint/);
   assert.match(ciWorkflow, /\$cleanupStore\.Remove\(\$cleanupCertificate\)/);
+  assert.match(ciWorkflow, /name: Sign and verify local Windows staging tree/);
+  assert.match(ciWorkflow, /name: Pack, sign, and checksum local MSIX/);
+  assert.match(ciWorkflow, /name: Install, update, and preserve Windows profile state/);
+  assert.match(ciWorkflow, /if: always\(\) && runner\.os == 'Windows'/);
 
   process.stdout.write("Windows MSIX staging, bundled runtime, startup, Phase 3, and fail-closed release contracts passed.\n");
 } finally {
