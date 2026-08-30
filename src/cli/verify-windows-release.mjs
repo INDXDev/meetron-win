@@ -119,7 +119,7 @@ async function signatureSubjects(paths) {
   writeFileSync(inputPath, JSON.stringify(paths), "utf8");
   const command = [
     "$paths = Get-Content -Raw -LiteralPath $env:MEETRON_SIGNATURE_PATHS | ConvertFrom-Json",
-    "$subjects = foreach ($path in $paths) { $signature = Get-AuthenticodeSignature -LiteralPath $path; $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($path)); [pscustomobject]@{ Path = [string]$path; Subject = [string]$certificate.Subject; Status = [string]$signature.Status; StatusMessage = [string]$signature.StatusMessage } }",
+    "$subjects = foreach ($path in $paths) { $signature = Get-AuthenticodeSignature -LiteralPath $path; $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($path)); [pscustomobject]@{ Path = [string]$path; Subject = [string]$certificate.Subject; Status = $signature.Status.ToString(); StatusMessage = [string]($signature.StatusMessage) } }",
     "$subjects | ConvertTo-Json -Compress",
   ].join("; ");
   const shell = process.env.SystemRoot
@@ -159,7 +159,7 @@ async function verifyTestSignatures(paths, publisher) {
     const untrustedSelfSigned = ["NotTrusted", "UnknownError"].includes(result.Status)
       && /(?:root certificate|certificate chain).*(?:not trusted|untrusted)/i.test(result.StatusMessage || "");
     if (!untrustedSelfSigned) {
-      throw cliError(`[ERROR] LOCAL-TEST Authenticode integrity is invalid for ${result.Path} (status=${result.Status || "none"}).`, 1);
+      throw cliError(`[ERROR] LOCAL-TEST Authenticode integrity is invalid for ${result.Path} (status=${result.Status || "none"}; message=${result.StatusMessage || "none"}).`, 1);
     }
   }
 }

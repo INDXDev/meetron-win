@@ -70,6 +70,7 @@ try {
   assert.match(verifyScript, /Trusted timestamped Authenticode signature is invalid/);
   assert.match(verifyScript, /X509Certificate.*CreateFromSignedFile/);
   assert.match(verifyScript, /Get-AuthenticodeSignature/);
+  assert.match(verifyScript, /Status\.ToString\(\)/);
   assert.match(verifyScript, /LOCAL-TEST Authenticode integrity is invalid/);
   assert.match(verifyScript, /verifyTestSignatures/);
   assert.match(verifyScript, /offset \+= 24/);
