@@ -111,7 +111,9 @@ The updater verifies the checksum, trusted timestamped signature, fixed package
 identity, manifest publisher, bundled Phase 3 files, and every inner signature
 before calling `Add-AppxPackage`. It then refreshes the Native Messaging host
 and confirms that the dedicated Chrome profile and its `Local State` login file
-were not changed. `--dry-run` performs all verification without installation.
+were not changed. The offline install is noninteractive and bounded to two
+minutes, with a separate one-minute Native Messaging refresh bound;
+`--dry-run` performs all verification without installation.
 
 Source-distributed users may continue to run `Meetron Update.cmd` from a newer
 source tree. That path updates the detected live installation in place, rejects

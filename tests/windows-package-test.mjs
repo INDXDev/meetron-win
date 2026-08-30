@@ -70,7 +70,11 @@ try {
   assert.match(verifyScript, /Trusted timestamped Authenticode signature is invalid/);
   assert.match(verifyScript, /X509Certificate.*CreateFromSignedFile/);
   assert.doesNotMatch(verifyScript, /Get-AuthenticodeSignature/);
+  assert.match(verifyScript, /offset \+= 24/);
   assert.match(verifyScript, /LOCAL-TEST MSIX cannot pass release verification/);
+  const packageInstaller = readFileSync(resolve(repoRoot, "src/cli/install-windows-package.mjs"), "utf8");
+  assert.match(packageInstaller, /MEETRON_MSIX_PATH/);
+  assert.match(packageInstaller, /timeout: 120_000/);
   const integrationInstaller = readFileSync(resolve(repoRoot, "src/cli/install-control-ui.mjs"), "utf8");
   assert.match(integrationInstaller, /MEETRON_PACKAGED/);
   assert.match(integrationInstaller, /\.\.\/Extension/);

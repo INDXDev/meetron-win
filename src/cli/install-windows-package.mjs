@@ -59,21 +59,21 @@ runMain(async () => {
     return;
   }
   const script = [
-    "Add-AppxPackage -Path $args[0] -ForceApplicationShutdown -ErrorAction Stop",
+    "Add-AppxPackage -Path $env:MEETRON_MSIX_PATH -ForceApplicationShutdown -ErrorAction Stop",
     "$package = Get-AppxPackage -Name 'io.github.bb8ad8.meetron' -ErrorAction Stop",
     "$package.InstallLocation",
   ].join("; ");
   const powershell = resolve(process.env.SystemRoot || process.env.WINDIR || "C:\\Windows", "System32/WindowsPowerShell/v1.0/powershell.exe");
   const { stdout } = await run(powershell, [
-    "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, packagePath,
-  ]);
+    "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script,
+  ], { env: { ...process.env, MEETRON_MSIX_PATH: packagePath }, timeout: 120_000 });
   const installedRoot = stdout.trim().split(/\r?\n/).at(-1)?.trim() || "";
   if (!statSync(resolve(installedRoot, "runtime/node.exe"), { throwIfNoEntry: false })?.isFile()) {
     throw cliError("[ERROR] Windows installed the package but its bundled Node runtime was not found.", 1);
   }
   await run(resolve(installedRoot, "runtime/node.exe"), [
     resolve(installedRoot, "src/cli/install-control-ui.mjs"), "--quiet",
-  ], { cwd: installedRoot, env: { ...process.env, MEETRON_PACKAGED: "1", MEETRON_PLATFORM: "win32" } });
+  ], { cwd: installedRoot, env: { ...process.env, MEETRON_PACKAGED: "1", MEETRON_PLATFORM: "win32" }, timeout: 60_000 });
   const after = snapshotProfile(paths.dedicatedProfileDir);
   if (before.existed && (!after.existed || before.localStateHash !== after.localStateHash)) {
     throw cliError("[ERROR] The dedicated Chrome profile or its login-state file changed during the package update.", 1);

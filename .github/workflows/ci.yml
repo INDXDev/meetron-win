@@ -47,6 +47,7 @@ jobs:
           npm run verify:windows-package -- --msix "dist/windows/Meetron-$version-windows-x64-LOCAL-TEST.msix" --allow-unsigned
       - if: runner.os == 'Windows'
         name: Test-sign, install, and update the local MSIX
+        timeout-minutes: 15
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -89,8 +90,10 @@ jobs:
           }
           finally {
             $env:MEETRON_PLATFORM = 'win32'
-            node src/cli/install-control-ui.mjs --uninstall --quiet
-            Get-AppxPackage -Name 'io.github.bb8ad8.meetron' | Remove-AppxPackage
+            try { node src/cli/install-control-ui.mjs --uninstall --quiet }
+            catch { Write-Warning "Native Messaging cleanup failed: $_" }
+            try { Get-AppxPackage -Name 'io.github.bb8ad8.meetron' | Remove-AppxPackage -ErrorAction Stop }
+            catch { Write-Warning "MSIX cleanup failed: $_" }
             if ($certificate) {
               Remove-Item "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
               Remove-Item "Cert:\CurrentUser\Root\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue

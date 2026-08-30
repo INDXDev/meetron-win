@@ -8,6 +8,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
@@ -103,30 +104,50 @@ function assertPackageContracts(root, { release }) {
   }
 }
 
-async function signature(path) {
+async function signatureSubjects(paths) {
+  const inputRoot = mkdtempSync(resolve(tmpdir(), "meetron-signatures-"));
+  const inputPath = resolve(inputRoot, "paths.json");
+  writeFileSync(inputPath, JSON.stringify(paths), "utf8");
   const command = [
-    "$certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($env:MEETRON_SIGNATURE_PATH))",
-    "[pscustomobject]@{ Subject = [string]$certificate.Subject } | ConvertTo-Json -Compress",
+    "$paths = Get-Content -Raw -LiteralPath $env:MEETRON_SIGNATURE_PATHS | ConvertFrom-Json",
+    "$subjects = foreach ($path in $paths) { $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($path)); [pscustomobject]@{ Path = [string]$path; Subject = [string]$certificate.Subject } }",
+    "$subjects | ConvertTo-Json -Compress",
   ].join("; ");
   const shell = process.env.SystemRoot
     ? resolve(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe")
     : "powershell.exe";
-  const { stdout } = await run(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
-    env: { ...process.env, MEETRON_SIGNATURE_PATH: path },
-  });
-  return JSON.parse(stdout.trim());
+  try {
+    const { stdout } = await run(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
+      env: { ...process.env, MEETRON_SIGNATURE_PATHS: inputPath },
+      timeout: 120_000,
+    });
+    const parsed = JSON.parse(stdout.trim());
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } finally {
+    rmSync(inputRoot, { recursive: true, force: true });
+  }
 }
 
-async function verifySignature(path, publisher, { requireTimestamp = true } = {}) {
-  const result = await signature(path);
-  if (result.Subject !== publisher) {
-    throw cliError(`[ERROR] Authenticode signer subject does not match --publisher for ${path} (subject=${result.Subject || "none"}).`, 1);
+async function verifySignatures(paths, publisher, { requireTimestamp = true } = {}) {
+  const subjects = await signatureSubjects(paths);
+  if (subjects.length !== paths.length) throw cliError("[ERROR] Authenticode signer inventory is incomplete.", 1);
+  for (const result of subjects) {
+    if (result.Subject !== publisher) {
+      throw cliError(`[ERROR] Authenticode signer subject does not match --publisher for ${result.Path} (subject=${result.Subject || "none"}).`, 1);
+    }
   }
   const signtool = findSdkTool("signtool.exe");
-  const verification = await run(signtool, ["verify", "/pa", "/all", "/v", ...(requireTimestamp ? ["/tw"] : []), path]);
-  const output = `${verification.stdout}\n${verification.stderr}`;
-  if (requireTimestamp && (!/The signature is timestamped:/i.test(output) || !/Number of warnings:\s*0/i.test(output))) {
-    throw cliError(`[ERROR] Trusted timestamped Authenticode signature is invalid for ${path}.`, 1);
+  for (let offset = 0; offset < paths.length; offset += 24) {
+    const batch = paths.slice(offset, offset + 24);
+    const verification = await run(signtool, ["verify", "/pa", "/all", "/v", ...(requireTimestamp ? ["/tw"] : []), ...batch], {
+      timeout: 120_000,
+    });
+    const output = `${verification.stdout}\n${verification.stderr}`;
+    const timestampCount = output.match(/The signature is timestamped:/gi)?.length || 0;
+    const warningCounts = [...output.matchAll(/Number of warnings:\s*(\d+)/gi)].map((match) => Number(match[1]));
+    if (requireTimestamp && (timestampCount < batch.length || !warningCounts.length || warningCounts.some((count) => count !== 0))) {
+      throw cliError(`[ERROR] Trusted timestamped Authenticode signature is invalid for batch starting with ${batch[0]}.`, 1);
+    }
   }
 }
 
@@ -140,7 +161,7 @@ async function verifyStage(root, { publisher, release, signed = release }) {
   if (signed) {
     const binaries = walkFiles(root).filter((path) => /\.(?:exe|dll)$/i.test(path));
     if (!binaries.length) throw cliError("[ERROR] Staging tree has no signable binaries.", 1);
-    for (const binary of binaries) await verifySignature(binary, publisher, { requireTimestamp: release });
+    await verifySignatures(binaries, publisher, { requireTimestamp: release });
   }
   return identity;
 }
@@ -196,7 +217,7 @@ runMain(async () => {
   if (release && /LOCAL-TEST/i.test(basename(msix))) throw cliError("[ERROR] A LOCAL-TEST MSIX cannot pass release verification.", 1);
   if ((allowUnsigned || allowTestSignature) && !/LOCAL-TEST/i.test(basename(msix))) throw cliError("[ERROR] Local verification is allowed only for a LOCAL-TEST MSIX.", 1);
   verifyChecksum(msix);
-  if (release || allowTestSignature) await verifySignature(msix, publisher, { requireTimestamp: release });
+  if (release || allowTestSignature) await verifySignatures([msix], publisher, { requireTimestamp: release });
   const unpackRoot = mkdtempSync(resolve(tmpdir(), "meetron-msix-verify-"));
   try {
     const makeappx = findSdkTool("makeappx.exe");
