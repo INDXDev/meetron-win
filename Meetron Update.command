@@ -3,8 +3,6 @@
 set -u
 
 repo_root="$(cd "$(dirname "$0")" && pwd)"
-"$repo_root/scripts/update-meetron.sh"
-update_status=$?
 
 show_notice() {
   message="$1"
@@ -16,6 +14,19 @@ end run
 APPLESCRIPT
   fi
 }
+
+# The updater itself now runs on Node.js, so a missing Node has to be reported
+# here instead of surfacing as "node: command not found".
+if ! command -v node >/dev/null 2>&1; then
+  printf '[ERROR] Node.js 22 or 24 LTS is required to update Meetron. Ask your AI assistant to install it, then run this again.\n' >&2
+  show_notice 'Node.js 22または24 LTSがインストールされていません。インストール後、もう一度「Meetron Update.command」を開いてください。'
+  printf 'Returnキーを押すと閉じます。\n'
+  read -r _
+  exit 1
+fi
+
+node "$repo_root/src/cli/update-meetron.mjs"
+update_status=$?
 
 printf '\n'
 case "$update_status" in

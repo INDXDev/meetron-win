@@ -33,7 +33,7 @@ const extensionEnvironmentReady =
   typeof extensionStorage?.local?.get === "function";
 const extensionId = extensionRuntime?.id || "jlikakgdldiihhflkobhnpfegjlcakdd";
 const automaticBootstrapCommand =
-  `EXTENSION_DIR="$(for p in "$HOME/Library/Application Support/Google/Chrome"/*/"Secure Preferences"; do /usr/bin/plutil -extract extensions.settings.${extensionId}.path raw "$p" 2>/dev/null && break; done)" && REPO_DIR="$(dirname "$EXTENSION_DIR")" && cd "$REPO_DIR" && npm ci && ./scripts/open-control-ui-setup.sh`;
+  `EXTENSION_DIR="$(for p in "$HOME/Library/Application Support/Google/Chrome"/*/"Secure Preferences"; do /usr/bin/plutil -extract extensions.settings.${extensionId}.path raw "$p" 2>/dev/null && break; done)" && REPO_DIR="$(dirname "$EXTENSION_DIR")" && cd "$REPO_DIR" && npm ci && node src/cli/open-control-ui-setup.mjs`;
 bootstrapCommand.textContent = automaticBootstrapCommand;
 
 let setupStatus = null;
@@ -250,7 +250,7 @@ function renderSetup() {
   bootstrap.hidden = connected;
   if (connected && setupStatus.repoRoot) {
     bootstrapCommand.textContent =
-      `cd ${shellQuote(setupStatus.repoRoot)} && npm ci && ./scripts/open-control-ui-setup.sh`;
+      `cd ${shellQuote(setupStatus.repoRoot)} && npm ci && node src/cli/open-control-ui-setup.mjs`;
   } else {
     bootstrapCommand.textContent = automaticBootstrapCommand;
   }

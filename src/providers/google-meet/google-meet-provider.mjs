@@ -133,7 +133,7 @@ async function waitForGoogleMeetMicrophoneState(page, expected, timeout = 500) {
 }
 
 async function pressGoogleMeetMicrophoneShortcut(page) {
-  await page.keyboard.press(getPlatformAdapter().meetingMuteShortcut);
+  await page.keyboard.press(getPlatformAdapter().shortcuts.meetingMute);
   await page.waitForTimeout(300);
 }
 

@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -10,8 +11,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+
+const { runSync: execFileSync, spawnSync } = macosPlatformAdapter.process;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const currentVersion = JSON.parse(
@@ -57,8 +60,8 @@ function initializeGit(root) {
 
 function runUpdater(root, overrides = {}, args = []) {
   return spawnSync(
-    resolve(repoRoot, "scripts/update-meetron.sh"),
-    ["--target", root, ...args],
+    process.execPath,
+    [resolve(repoRoot, "src/cli/update-meetron.mjs"), "--target", root, ...args],
     {
       cwd: repoRoot,
       encoding: "utf8",
@@ -67,6 +70,7 @@ function runUpdater(root, overrides = {}, args = []) {
         MEETRON_UPDATE_BACKUP_DIR: backupRoot,
         MEETRON_UPDATE_SKIP_NPM: "1",
         MEETRON_UPDATE_SKIP_AUDIO_INSTALL: "1",
+        MEETRON_PLATFORM: "darwin",
         ...overrides,
       },
     },
@@ -88,6 +92,8 @@ try {
     JSON.parse(readFileSync(resolve(targetRoot, "package.json"), "utf8")).version,
     currentVersion,
   );
+  assert.equal(existsSync(resolve(targetRoot, "scripts/native-host.sh")), false);
+  assert.equal(existsSync(resolve(targetRoot, "scripts/native-host.mjs")), true);
   assert.equal(
     JSON.parse(readFileSync(resolve(targetRoot, "extension/manifest.json"), "utf8")).version,
     currentVersion,

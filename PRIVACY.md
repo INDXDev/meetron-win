@@ -30,7 +30,7 @@ Before connecting Meetron:
 Remove the extension from both Chrome profiles, then run:
 
 ```bash
-./scripts/uninstall.sh --remove-data --yes
+node src/cli/uninstall.mjs --remove-data --yes
 ```
 
 This deletes the Native Messaging registration, local configuration and runtime files, the shared dedicated Chrome profile, and the legacy pre-0.6 ChatGPT profile if present. Add `--remove-audio-driver` to remove the system-level Meetron virtual audio plug-ins as well. It does not delete server-side ChatGPT chats or submitted screenshots, Google account data, legacy BlackHole packages, or the repository checkout.

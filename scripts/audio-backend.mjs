@@ -1,47 +1,71 @@
 #!/usr/bin/env node
 
-import { execFile } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { defineAudioBackend } from "../src/audio/audio-backend-contract.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
-const execFileAsync = promisify(execFile);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const envPath = resolve(repoRoot, ".meeting-copilot.env");
+const platform = getPlatformAdapter();
 
-export const AUDIO_BACKENDS = Object.freeze({
-  custom: defineAudioBackend({
-    id: "custom",
-    label: "Meetron Audio",
-    meetingToAI: {
-      name: "Meetron: Meeting to AI",
-      uid: "io.github.bb8ad8.meetron.audio.meeting-to-ai.device",
-    },
-    aiToMeeting: {
-      name: "Meetron: AI to Meeting",
-      uid: "io.github.bb8ad8.meetron.audio.ai-to-meeting.device",
-    },
-  }),
-  legacyCustom: defineAudioBackend({
-    id: "legacy-custom",
-    label: "Meeting Copilot Audio (legacy)",
-    meetingToAI: {
-      name: "Meeting Copilot: Meeting to AI",
-      uid: "dev.meetingcopilot.audio.meeting-to-ai.device",
-    },
-    aiToMeeting: {
-      name: "Meeting Copilot: AI to Meeting",
-      uid: "dev.meetingcopilot.audio.ai-to-meeting.device",
-    },
-  }),
-  blackhole: defineAudioBackend({
-    id: "blackhole",
-    label: "BlackHole (legacy)",
-    meetingToAI: { name: "BlackHole 2ch", uid: "BlackHole2ch_UID" },
-    aiToMeeting: { name: "BlackHole 16ch", uid: "BlackHole16ch_UID" },
-  }),
+export function createAudioBackends({ labelPrefix = "Meetron: " } = {}) {
+  if (typeof labelPrefix !== "string" || !labelPrefix.trim()) {
+    throw new Error("Audio device label prefix must be a non-empty string.");
+  }
+  return Object.freeze({
+    custom: defineAudioBackend({
+      id: "custom",
+      label: "Meetron Audio",
+      meetingToAI: {
+        name: `${labelPrefix}Meeting to AI`,
+        uid: "io.github.bb8ad8.meetron.audio.meeting-to-ai.device",
+      },
+      aiToMeeting: {
+        name: `${labelPrefix}AI to Meeting`,
+        uid: "io.github.bb8ad8.meetron.audio.ai-to-meeting.device",
+      },
+    }),
+    legacyCustom: defineAudioBackend({
+      id: "legacy-custom",
+      label: "Meeting Copilot Audio (legacy)",
+      meetingToAI: {
+        name: "Meeting Copilot: Meeting to AI",
+        uid: "dev.meetingcopilot.audio.meeting-to-ai.device",
+      },
+      aiToMeeting: {
+        name: "Meeting Copilot: AI to Meeting",
+        uid: "dev.meetingcopilot.audio.ai-to-meeting.device",
+      },
+    }),
+    blackhole: defineAudioBackend({
+      id: "blackhole",
+      label: "BlackHole (legacy)",
+      meetingToAI: { name: "BlackHole 2ch", uid: "BlackHole2ch_UID" },
+      aiToMeeting: { name: "BlackHole 16ch", uid: "BlackHole16ch_UID" },
+    }),
+  });
+}
+
+function configuredAudioLabelPrefix() {
+  // A blank prefix must fall back to the default: this runs while the module is
+  // being imported, so throwing here would break every command that reads audio
+  // status, including the restore path used by uninstall.
+  if (process.env.MEETING_COPILOT_AUDIO_LABEL_PREFIX?.trim()) {
+    return process.env.MEETING_COPILOT_AUDIO_LABEL_PREFIX;
+  }
+  if (existsSync(envPath)) {
+    const match = readFileSync(envPath, "utf8").match(
+      /^MEETING_COPILOT_AUDIO_LABEL_PREFIX=['"]?([^'"\r\n]+)['"]?$/m,
+    );
+    if (match?.[1]?.trim()) return match[1];
+  }
+  return "Meetron: ";
+}
+
+export const AUDIO_BACKENDS = createAudioBackends({
+  labelPrefix: configuredAudioLabelPrefix(),
 });
 
 function configuredBackendPreference() {
@@ -81,31 +105,19 @@ export function routingForBackend(backend) {
 }
 
 function audioControlExecutable() {
-  const explicit = process.env.MEETING_COPILOT_AUDIOCTL;
-  const candidates = explicit !== undefined
-    ? [explicit]
-    : [
-        resolve(repoRoot, "native/audio-control/.build/apple/Products/Release/meetron-audioctl"),
-        resolve(repoRoot, "native/audio-control/.build/release/meeting-copilot-audioctl"),
-        resolve(repoRoot, "native/audio-control/.build/debug/meeting-copilot-audioctl"),
-        "/usr/local/bin/meetron-audioctl",
-        "/usr/local/bin/meeting-copilot-audioctl",
-      ];
+  const candidates = platform.audioControl.executableCandidates({ repoRoot, env: process.env });
   return candidates.find((candidate) => candidate && existsSync(candidate));
 }
 
 function switchAudioSourceExecutable() {
-  const explicit = process.env.MEETING_COPILOT_SWITCH_AUDIO_SOURCE;
-  const candidates = explicit !== undefined
-    ? [explicit]
-    : ["/opt/homebrew/bin/SwitchAudioSource", "/usr/local/bin/SwitchAudioSource"];
+  const candidates = platform.audioControl.fallbackExecutableCandidates({ env: process.env });
   return candidates.find((candidate) => candidate && existsSync(candidate));
 }
 
 async function systemStatus() {
   const audioctl = audioControlExecutable();
   if (audioctl) {
-    const { stdout } = await execFileAsync(audioctl, ["status"], { timeout: 10_000 });
+    const { stdout } = await platform.process.run(audioctl, ["status"], { timeout: 10_000 });
     return { ...JSON.parse(stdout), controller: "coreaudio", executable: audioctl };
   }
   const switchAudioSource = switchAudioSourceExecutable();
@@ -113,9 +125,9 @@ async function systemStatus() {
     return { input: null, output: null, devices: [], controller: "unavailable" };
   }
   const [input, output, allDevices] = await Promise.all([
-    execFileAsync(switchAudioSource, ["-c", "-t", "input"], { timeout: 10_000 }),
-    execFileAsync(switchAudioSource, ["-c", "-t", "output"], { timeout: 10_000 }),
-    execFileAsync(switchAudioSource, ["-a"], { timeout: 10_000 }),
+    platform.process.run(switchAudioSource, ["-c", "-t", "input"], { timeout: 10_000 }),
+    platform.process.run(switchAudioSource, ["-c", "-t", "output"], { timeout: 10_000 }),
+    platform.process.run(switchAudioSource, ["-a"], { timeout: 10_000 }),
   ]);
   const names = allDevices.stdout.split("\n").map((value) => value.trim()).filter(Boolean);
   const device = (name) => ({ id: 0, uid: "", name, hasInput: true, hasOutput: true });
@@ -197,9 +209,9 @@ async function setDefault(kind, target, system) {
   if (system.controller === "coreaudio") {
     const resolvedTarget = resolveDeviceTarget(system.devices, target);
     if (!resolvedTarget?.uid) throw new Error(`Audio device UID was not found: ${target.name}`);
-    await execFileAsync(system.executable, [`set-default-${kind}`, "--uid", resolvedTarget.uid], { timeout: 10_000 });
+    await platform.process.run(system.executable, [`set-default-${kind}`, "--uid", resolvedTarget.uid], { timeout: 10_000 });
   } else if (system.controller === "switchaudio-osx") {
-    await execFileAsync(system.executable, ["-t", kind, "-s", target.name], { timeout: 10_000 });
+    await platform.process.run(system.executable, ["-t", kind, "-s", target.name], { timeout: 10_000 });
   } else {
     throw new Error("No supported macOS audio controller is available. Build the audio control helper first.");
   }

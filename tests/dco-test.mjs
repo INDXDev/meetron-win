@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+
+const { runSync: execFileSync, spawnSync } = macosPlatformAdapter.process;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporary = mkdtempSync(resolve(tmpdir(), "meetron-dco-test-"));

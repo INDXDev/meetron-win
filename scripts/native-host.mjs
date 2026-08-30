@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { execFile, spawn } from "node:child_process";
 import {
   appendFileSync,
   closeSync,
@@ -15,7 +14,6 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { getAudioStatus } from "./audio-backend.mjs";
 import { connectToChromeOverCDP } from "./playwright-cdp.mjs";
 import { locatorIsVisible } from "../src/browser/meeting-browser.mjs";
@@ -41,20 +39,27 @@ import {
   createParticipantStatus,
 } from "../src/core/participant-state.mjs";
 import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
+import { loadEnvironment } from "../src/cli/cli-utils.mjs";
 
 const EXTENSION_ID = "jlikakgdldiihhflkobhnpfegjlcakdd";
 const EXPECTED_ORIGIN = `chrome-extension://${EXTENSION_ID}/`;
 const MAX_MESSAGE_BYTES = 1024 * 1024;
-const execFileAsync = promisify(execFile);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Chrome starts the Native Messaging Host with a minimal environment. The
+// generated launcher replaces the former native-host.sh, which exported
+// .meeting-copilot.env before starting this host, so settings such as
+// MEETING_COPILOT_PROFILE_DIR and MEETING_COPILOT_RUNTIME_DIR must be loaded
+// here. Without this the host resolves default paths while the CLI commands it
+// spawns resolve the configured ones.
+Object.assign(process.env, loadEnvironment(resolve(repoRoot, ".meeting-copilot.env")));
 const platformAdapter = getPlatformAdapter();
-const platformPaths = platformAdapter.resolvePaths({
+const platformPaths = platformAdapter.paths.resolve({
   repoRoot,
   home: process.env.HOME || "",
   env: process.env,
 });
 const appVersion = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).version;
-const scriptsDir = resolve(repoRoot, "scripts");
+const cliDir = resolve(repoRoot, "src/cli");
 const runtimeDir = platformPaths.runtimeDir;
 const meetingStatePath = resolve(runtimeDir, "meeting-launch.json");
 const meetingLogPath = resolve(runtimeDir, "meeting-launch.log");
@@ -101,24 +106,15 @@ function configuredPort(name, fallback) {
 
 function commandEnvironment() {
   const nodePath = configuredValue("MEETING_COPILOT_NODE_PATH");
-  const commandPaths = [
-    nodePath ? dirname(nodePath) : "",
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-    "/bin",
-    process.env.PATH || "",
-  ].filter(Boolean);
   return {
-    ...process.env,
-    PATH: commandPaths.join(":"),
+    ...platformAdapter.process.commandEnvironment({ env: process.env, nodePath }),
     MEETING_COPILOT_NODE_PATH: nodePath,
     MEETING_COPILOT_CDP_PORT: configuredPort("MEETING_COPILOT_CDP_PORT", "9223"),
   };
 }
 
 async function run(command, args, timeout = 30_000) {
-  return execFileAsync(command, args, {
+  return platformAdapter.process.run(command, args, {
     cwd: repoRoot,
     env: commandEnvironment(),
     maxBuffer: 1024 * 1024,
@@ -131,7 +127,7 @@ function runDetached(command, args, logName) {
   const logPath = resolve(runtimeDir, logName);
   rotateLog(logPath);
   const log = openSync(logPath, "a", 0o600);
-  const child = spawn(command, args, {
+  const child = platformAdapter.process.spawn(command, args, {
     cwd: repoRoot,
     detached: true,
     env: commandEnvironment(),
@@ -193,7 +189,7 @@ async function connectDedicatedChrome() {
       await run(
         process.execPath,
         [
-          resolve(scriptsDir, "verify-dedicated-chrome.mjs"),
+          resolve(repoRoot, "scripts/verify-dedicated-chrome.mjs"),
           "--profile-dir",
           dedicatedProfileDir,
           "--port",
@@ -512,7 +508,7 @@ function saveProjectUrl(payload) {
 }
 
 async function configureAudio() {
-  const result = await run(resolve(scriptsDir, "configure-audio.sh"), [], 15_000);
+  const result = await run(process.execPath, [resolve(cliDir, "configure-audio.mjs")], 15_000);
   try {
     return JSON.parse(result.stdout.trim());
   } catch {
@@ -521,7 +517,7 @@ async function configureAudio() {
 }
 
 function openDedicatedChromeSetup() {
-  return runDetached(resolve(scriptsDir, "open-control-ui-setup.sh"), [], "setup-meet-chrome.log");
+  return runDetached(process.execPath, [resolve(cliDir, "open-control-ui-setup.mjs")], "setup-meet-chrome.log");
 }
 
 function openChatgptSetup() {
@@ -529,8 +525,8 @@ function openChatgptSetup() {
     throw new Error("先にChatGPT Project URLを保存してください");
   }
   return runDetached(
-    resolve(scriptsDir, "open-chatgpt-live.sh"),
-    [],
+    process.execPath,
+    [resolve(cliDir, "open-chatgpt-live.mjs")],
     "setup-chatgpt.log",
   );
 }
@@ -551,41 +547,17 @@ function confirmSetupStep(payload) {
 }
 
 function processIsRunning(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return false;
-  }
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+  return platformAdapter.process.exists(pid);
 }
 
 async function launchProcessIsRunning(pid) {
   if (!processIsRunning(pid)) return false;
-  try {
-    const result = await execFileAsync("/bin/ps", ["-p", String(pid), "-o", "command="], {
-      timeout: 2_000,
-    });
-    return result.stdout.includes("meeting-start-job.mjs");
-  } catch {
-    return false;
-  }
+  const command = await platformAdapter.process.command(pid);
+  return command.includes("meeting-start-job.mjs");
 }
 
 function signalLaunchProcessGroup(pid, signal) {
-  try {
-    process.kill(-pid, signal);
-    return;
-  } catch (groupError) {
-    try {
-      process.kill(pid, signal);
-      return;
-    } catch {
-      if (groupError.code !== "ESRCH") throw groupError;
-    }
-  }
+  platformAdapter.process.terminateTree(pid, signal);
 }
 
 async function cancelMeetingLaunch() {
@@ -655,8 +627,8 @@ async function launchSession({ meeting, state }) {
   writeJsonAtomic(meetingStatePath, state);
   rotateLog(meetingLogPath);
   const log = openSync(meetingLogPath, "a", 0o600);
-  const child = spawn(process.execPath, [
-    resolve(scriptsDir, "meeting-start-job.mjs"),
+  const child = platformAdapter.process.spawn(process.execPath, [
+    resolve(repoRoot, "scripts/meeting-start-job.mjs"),
     "--url-stdin",
     meeting.displayUrl,
     state.sessionId,
@@ -726,7 +698,11 @@ async function getStatus() {
 async function restartVoice() {
   const meetingBefore = await getDedicatedMeetingStatus();
   await stopVoice();
-  const result = await run(resolve(scriptsDir, "open-chatgpt-live.sh"), ["--replace-tab"], 120_000);
+  const result = await run(
+    process.execPath,
+    [resolve(cliDir, "open-chatgpt-live.mjs"), "--replace-tab"],
+    120_000,
+  );
   const meetingAfter = await getDedicatedMeetingStatus();
   if (meetingBefore.connection === "joined" && meetingAfter.connection !== "joined") {
     throw new Error("Voiceは再起動しましたが、会議参加状態を維持できませんでした");
@@ -863,7 +839,7 @@ async function toggleParticipantMicrophone() {
 }
 
 async function restoreAudio() {
-  const result = await run(resolve(scriptsDir, "restore-audio.sh"), [], 15_000);
+  const result = await run(process.execPath, [resolve(cliDir, "restore-audio.mjs")], 15_000);
   try {
     return JSON.parse(result.stdout.trim());
   } catch {
@@ -904,10 +880,10 @@ async function stopSession() {
 
 async function runDiagnostics() {
   try {
-    await run(resolve(scriptsDir, "check-env.sh"), [], 30_000);
+    await run(process.execPath, [resolve(cliDir, "check-env.mjs")], 30_000);
     return { ok: true };
   } catch {
-    // Detailed diagnostics remain available from ./scripts/check-env.sh, but
+    // Detailed diagnostics remain available from the check-env CLI, but
     // are not sent through the page overlay or rendered in its UI.
     return { ok: false };
   }
