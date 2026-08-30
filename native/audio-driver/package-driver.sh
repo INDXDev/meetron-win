@@ -77,7 +77,7 @@ MEETING_COPILOT_AUDIO_BUILD_DIR="$working_dir/drivers" \
 MEETING_COPILOT_AUDIO_SIGNING_IDENTITY="$application_identity" \
 MEETING_COPILOT_AUDIO_DEPLOYMENT_TARGET="$deployment_target" \
   "$driver_root/build-driver.sh"
-"$repo_root/scripts/build-audio-control.sh"
+node "$repo_root/src/cli/build-audio-control.mjs"
 
 audioctl="$repo_root/native/audio-control/.build/apple/Products/Release/meetron-audioctl"
 staging="$working_dir/root"
