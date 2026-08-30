@@ -9,6 +9,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 import { windowsPlatformInternals } from "../src/platform/windows/windows-platform-adapter.mjs";
+import { createWindowsCredentialStore } from "../src/platform/windows/windows-credential-store.mjs";
 
 if (process.platform !== "win32") throw new Error("Windows platform tests require Windows.");
 
@@ -16,8 +17,10 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const platform = getPlatformAdapter("win32");
 const host = resolve(repoRoot, "native/windows/target/release/meetron-host.exe");
 const audioctl = resolve(repoRoot, "native/windows/target/release/meetron-audioctl.exe");
+const credentialHelper = resolve(repoRoot, "native/windows/target/release/meetron-credential.exe");
 assert.equal(existsSync(host), true, "npm run build:windows must build meetron-host.exe");
 assert.equal(existsSync(audioctl), true, "npm run build:windows must build meetron-audioctl.exe");
+assert.equal(existsSync(credentialHelper), true, "npm run build:windows must build meetron-credential.exe");
 
 const npm = platform.process.spawnSync("npm", ["--version"], { encoding: "utf8" });
 assert.equal(npm.status, 0);
@@ -41,6 +44,33 @@ assert.equal(
 
 const temporary = mkdtempSync(resolve(tmpdir(), "meetron-windows-test-"));
 try {
+  const credentialName = `phase2-test-${process.pid}`;
+  const credentialStore = createWindowsCredentialStore({ repoRoot, namespace: "integration-test" });
+  await credentialStore.delete(credentialName);
+  try {
+    assert.equal(await credentialStore.get(credentialName), null);
+    await credentialStore.set(credentialName, "non-confidential-test-value");
+    assert.equal(await credentialStore.get(credentialName), "non-confidential-test-value");
+  } finally {
+    assert.equal(await credentialStore.delete(credentialName), true);
+  }
+
+  const bridge = platform.process.spawnSync(
+    process.execPath,
+    [resolve(repoRoot, "src/cli/windows-shell-command.mjs"), "--request-stdin"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      input: JSON.stringify({ type: "ping" }),
+      env: { ...process.env, MEETRON_PLATFORM: "win32" },
+      timeout: 30_000,
+    },
+  );
+  assert.equal(bridge.status, 0, bridge.stderr);
+  const bridgeResponse = JSON.parse(bridge.stdout);
+  assert.equal(bridgeResponse.ok, true);
+  assert.equal(bridgeResponse.data.pong, true);
+
   const secureDirectory = resolve(temporary, "private");
   const secureFile = resolve(secureDirectory, "secret.txt");
   platform.fsSecurity.secureDir(secureDirectory);

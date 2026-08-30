@@ -4,12 +4,17 @@ Contributions are welcome. This project automates frequently changing consumer w
 
 ## Development
 
-Requirements for standard JavaScript, extension, and browser work are macOS 13 or later or Windows 11, Google Chrome, Node.js 22 or 24 LTS, and npm. Xcode Command Line Tools are required only when changing or locally building the macOS audio components. Windows native changes require the stable Rust toolchain.
+Requirements for standard JavaScript, extension, and browser work are macOS 13 or later or Windows 11, Google Chrome, Node.js 22 or 24 LTS, and npm. Xcode Command Line Tools are required only when changing or locally building the macOS audio components. Windows native changes require the stable Rust toolchain and .NET 8 SDK.
 
 ```bash
 npm ci
 npm test
 ```
+
+Windows shell changes must also keep the unpackaged WinUI 3 build and focused
+shell-state tests green. `npm run build:windows` and `npm run test:windows`
+include both automatically. MSIX packaging, signing, startup registration, and
+updates are intentionally not part of the Phase 2 source build.
 
 Native audio source changes additionally require:
 

@@ -40,6 +40,11 @@ import {
   createParticipantStatus,
 } from "../src/core/participant-state.mjs";
 import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
+import {
+  loadProjectUrl,
+  normalizeProjectUrl,
+  saveProjectUrl as persistProjectUrl,
+} from "../src/platform/project-settings.mjs";
 import { loadEnvironment } from "../src/cli/cli-utils.mjs";
 
 const EXTENSION_ID = "jlikakgdldiihhflkobhnpfegjlcakdd";
@@ -359,8 +364,7 @@ async function leaveDedicatedMeeting(providerId = activeProviderId()) {
   return getMeetingProvider(providerId).leave(browser, locatorIsVisible);
 }
 
-function projectConfigured() {
-  const projectUrl = getProjectUrl();
+function projectConfigured(projectUrl) {
   if (!projectUrl) {
     return false;
   }
@@ -373,32 +377,12 @@ function projectConfigured() {
 }
 
 function getProjectUrl() {
-  if (!existsSync(envPath)) {
-    return "";
-  }
-  const match = readFileSync(envPath, "utf8").match(
-    /^MEETING_COPILOT_CHATGPT_PROJECT_URL=['"]?([^'"\r\n]+)['"]?$/m,
-  );
-  return match?.[1] || "";
-}
-
-function normalizeProjectUrl(value) {
-  let url;
-  try {
-    url = new URL(String(value || "").trim());
-  } catch {
-    throw new Error("有効なChatGPT Project URLを入力してください");
-  }
-  if (
-    url.protocol !== "https:" ||
-    url.hostname !== "chatgpt.com" ||
-    !/^\/g\/g-p-[A-Za-z0-9_-]+\/project\/?$/.test(url.pathname)
-  ) {
-    throw new Error("ChatGPT Projectの /g/g-p-.../project URLを入力してください");
-  }
-  url.search = "";
-  url.hash = "";
-  return url.toString();
+  return loadProjectUrl({
+    platformId: platformAdapter.id,
+    repoRoot,
+    env: process.env,
+    envPath,
+  });
 }
 
 function readSetupState() {
@@ -467,8 +451,8 @@ async function getSetupStatus(audioStatus = null) {
   const audio = audioStatus || await getAudioStatus();
   const confirmations = readSetupState();
   const audioDevicesReady = audio.devicesReady === true;
-  const projectUrl = getProjectUrl();
-  const projectIsConfigured = Boolean(projectUrl) && projectConfigured();
+  const projectUrl = await getProjectUrl();
+  const projectIsConfigured = Boolean(projectUrl) && projectConfigured(projectUrl);
   const extensionInstalled = dedicatedExtensionInstalled();
   return {
     hostConnected: true,
@@ -496,16 +480,20 @@ async function getSetupStatus(audioStatus = null) {
   };
 }
 
-function saveProjectUrl(payload) {
+async function saveProjectUrl(payload) {
   const projectUrl = normalizeProjectUrl(payload?.projectUrl);
-  const existing = existsSync(envPath) ? readFileSync(envPath, "utf8") : "";
-  const setting = `MEETING_COPILOT_CHATGPT_PROJECT_URL='${projectUrl}'`;
-  const updated = /^MEETING_COPILOT_CHATGPT_PROJECT_URL=.*$/m.test(existing)
-    ? existing.replace(/^MEETING_COPILOT_CHATGPT_PROJECT_URL=.*$/m, setting)
-    : `${existing.trimEnd()}${existing.trim() ? "\n" : ""}${setting}\n`;
-  const temporaryPath = `${envPath}.${process.pid}.tmp`;
-  writeFileSync(temporaryPath, updated, { mode: 0o600 });
-  renameSync(temporaryPath, envPath);
+  await persistProjectUrl({
+    value: projectUrl,
+    platformId: platformAdapter.id,
+    repoRoot,
+    envPath,
+    secureFile: platformAdapter.fsSecurity.secureFile,
+  });
+  if (platformAdapter.id === "win32") {
+    delete process.env.MEETING_COPILOT_CHATGPT_PROJECT_URL;
+  } else {
+    process.env.MEETING_COPILOT_CHATGPT_PROJECT_URL = projectUrl;
+  }
 
   const setup = readSetupState();
   writeSetupState({ ...setup, chatgptLoginConfirmed: false });
@@ -525,8 +513,8 @@ function openDedicatedChromeSetup() {
   return runDetached(process.execPath, [resolve(cliDir, "open-control-ui-setup.mjs")], "setup-meet-chrome.log");
 }
 
-function openChatgptSetup() {
-  if (!projectConfigured()) {
+async function openChatgptSetup() {
+  if (!projectConfigured(await getProjectUrl())) {
     throw new Error("先にChatGPT Project URLを保存してください");
   }
   return runDetached(
@@ -689,7 +677,7 @@ async function getStatus() {
     // Compatibility alias for published extensions.
     dedicatedMeet: dedicatedMeeting,
     configuration: {
-      projectConfigured: projectConfigured(),
+      projectConfigured: setup.project.configured,
       extensionId: EXTENSION_ID,
       setupComplete: setup.complete,
     },

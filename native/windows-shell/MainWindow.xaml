@@ -1,0 +1,109 @@
+<Window
+    x:Class="Meetron.WindowsShell.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Meetron">
+  <Grid>
+    <NavigationView x:Name="Navigation" PaneDisplayMode="Top"
+                    IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
+                    SelectionChanged="Navigation_SelectionChanged">
+      <NavigationView.MenuItems>
+        <NavigationViewItem Content="Session" Tag="session">
+          <NavigationViewItem.Icon><SymbolIcon Symbol="Play" /></NavigationViewItem.Icon>
+        </NavigationViewItem>
+        <NavigationViewItem Content="Setup" Tag="setup">
+          <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
+        </NavigationViewItem>
+        <NavigationViewItem Content="Diagnostics" Tag="diagnostics">
+          <NavigationViewItem.Icon><SymbolIcon Symbol="Repair" /></NavigationViewItem.Icon>
+        </NavigationViewItem>
+        <NavigationViewItem Content="Settings" Tag="settings">
+          <NavigationViewItem.Icon><SymbolIcon Symbol="Manage" /></NavigationViewItem.Icon>
+        </NavigationViewItem>
+      </NavigationView.MenuItems>
+
+      <Grid Padding="24" RowSpacing="16">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" CornerRadius="10" Padding="16"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+          <Grid ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock x:Name="Headline" Text="Meetron is ready" FontSize="22" FontWeight="SemiBold" />
+              <TextBlock x:Name="Summary" Text="No active session" Opacity="0.72" Margin="0,4,0,0" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Refresh" Click="Refresh_Click" VerticalAlignment="Center" />
+          </Grid>
+        </Border>
+
+        <ScrollViewer x:Name="SessionPanel" Grid.Row="1">
+          <StackPanel Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Meeting session" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock Text="Paste a Google Meet or Zoom Web URL. The URL is sent through stdin and is never stored by the shell." TextWrapping="Wrap" />
+            <PasswordBox x:Name="MeetingUrl" Header="Meeting URL" PasswordRevealMode="Peek" />
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Button Content="Start meeting" Click="StartSession_Click" Style="{ThemeResource AccentButtonStyle}" />
+              <Button Content="Mute / unmute GPT" Click="ToggleMute_Click" />
+              <Button Content="End session" Click="StopSession_Click" />
+            </StackPanel>
+            <InfoBar x:Name="SessionInfo" IsOpen="False" IsClosable="True" />
+          </StackPanel>
+        </ScrollViewer>
+
+        <ScrollViewer x:Name="SetupPanel" Grid.Row="1" Visibility="Collapsed">
+          <StackPanel Spacing="14" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Setup" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock Text="Configure the Phase 1 browser and VB-CABLE backend without using a terminal." TextWrapping="Wrap" />
+            <Button Content="Install browser integration" Click="InstallIntegration_Click" HorizontalAlignment="Left" />
+            <PasswordBox x:Name="ProjectUrl" Header="ChatGPT Project URL" PasswordRevealMode="Peek"
+                         Description="On Windows this value is saved in Credential Manager, not the .env file." />
+            <Button Content="Save Project URL" Click="SaveProject_Click" HorizontalAlignment="Left" />
+            <Button Content="Configure VB-CABLE audio" Click="ConfigureAudio_Click" HorizontalAlignment="Left" />
+            <Button Content="Open dedicated Chrome for Google sign-in" Click="OpenGoogle_Click" HorizontalAlignment="Left" />
+            <CheckBox x:Name="GoogleConfirmed" Content="Google sign-in completed" Click="GoogleConfirmed_Click" />
+            <Button Content="Open ChatGPT and start Voice setup" Click="OpenChatGpt_Click" HorizontalAlignment="Left" />
+            <CheckBox x:Name="ChatGptConfirmed" Content="ChatGPT sign-in completed" Click="ChatGptConfirmed_Click" />
+            <InfoBar x:Name="SetupInfo" IsOpen="False" IsClosable="True" />
+          </StackPanel>
+        </ScrollViewer>
+
+        <ScrollViewer x:Name="DiagnosticsPanel" Grid.Row="1" Visibility="Collapsed">
+          <StackPanel Spacing="14" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Diagnostics" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock x:Name="DiagnosticsText" Text="Run diagnostics to inspect the local setup." TextWrapping="Wrap" FontFamily="Consolas" />
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Button Content="Run diagnostics" Click="RunDiagnostics_Click" Style="{ThemeResource AccentButtonStyle}" />
+              <Button Content="Open microphone privacy settings" Click="OpenMicrophoneSettings_Click" />
+              <Button Content="Open runtime logs" Click="OpenLogs_Click" />
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+
+        <ScrollViewer x:Name="SettingsPanel" Grid.Row="1" Visibility="Collapsed">
+          <StackPanel Spacing="14" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Settings" Style="{ThemeResource TitleTextBlockStyle}" />
+            <ToggleSwitch x:Name="NotificationsEnabled" Header="App notifications"
+                          OnContent="On" OffContent="Off" Toggled="Settings_Toggled" />
+            <ToggleSwitch x:Name="HotkeyEnabled" Header="Global GPT mute hotkey"
+                          OnContent="Ctrl+Alt+M" OffContent="Off" Toggled="Settings_Toggled" />
+            <TextBlock Text="The hotkey fails closed when the participant microphone state cannot be verified." TextWrapping="Wrap" Opacity="0.72" />
+            <Button Content="Exit Meetron" Click="Exit_Click" HorizontalAlignment="Left" />
+          </StackPanel>
+        </ScrollViewer>
+
+        <TextBlock x:Name="Footer" Grid.Row="2" Text="Starting…" Opacity="0.65" />
+      </Grid>
+    </NavigationView>
+  </Grid>
+</Window>

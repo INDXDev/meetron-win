@@ -15,6 +15,7 @@ import {
   runMain,
 } from "./cli-utils.mjs";
 import { ensureChrome, findChrome, stopProfileGracefully } from "./chrome-session.mjs";
+import { loadProjectUrl } from "../platform/project-settings.mjs";
 
 const usage = `Usage: node src/cli/open-chatgpt-live.mjs [options]
 
@@ -49,9 +50,13 @@ runMain(async () => {
     else if (argument === "--dry-run") dryRun = true;
     else throw cliError(`Unknown option: ${argument}\n${usage}`);
   }
-  projectUrl ||= env.MEETING_COPILOT_CHATGPT_PROJECT_URL || "";
+  projectUrl ||= await loadProjectUrl({
+    platformId: platform.id,
+    repoRoot,
+    env,
+  });
   if (!/^https:\/\/chatgpt\.com\/g\/g-p-[^/]+\/project/.test(projectUrl)) {
-    throw cliError("Set MEETING_COPILOT_CHATGPT_PROJECT_URL to a ChatGPT Project landing URL.");
+    throw cliError("Configure a ChatGPT Project landing URL before opening ChatGPT Live.");
   }
   const chromePath = findChrome({ home: process.env.HOME || homedir(), env, candidates: platformPaths.chromeApplications });
   if (!chromePath) throw cliError("Google Chrome was not found.", 1);
