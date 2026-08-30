@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import {
   AUDIO_BACKENDS,
+  createAudioBackends,
   resolveDeviceTarget,
   routingForBackend,
   selectAudioBackend,
@@ -38,5 +39,9 @@ const routing = routingForBackend(AUDIO_BACKENDS.custom);
 assert.equal(routing.chatgptInput.uid, routing.meetingSpeaker.uid);
 assert.equal(routing.chatgptOutput.uid, routing.meetingMicrophone.uid);
 assert.notEqual(routing.chatgptInput.uid, routing.chatgptOutput.uid);
+
+const branded = createAudioBackends({ labelPrefix: "Contoso Cable - " });
+assert.equal(branded.custom.meetingToAI.name, "Contoso Cable - Meeting to AI");
+assert.equal(branded.custom.aiToMeeting.name, "Contoso Cable - AI to Meeting");
 
 process.stdout.write("Audio backend selection passed.\n");

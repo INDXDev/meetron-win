@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+
+const { spawn } = macosPlatformAdapter.process;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryDir = mkdtempSync(resolve(tmpdir(), "meeting-copilot-native-test-"));

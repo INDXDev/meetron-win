@@ -4,16 +4,25 @@ import assert from "node:assert/strict";
 import { defineAudioBackend } from "../src/audio/audio-backend-contract.mjs";
 import { defineCredentialStore } from "../src/platform/credential-store-contract.mjs";
 import { defineInstaller } from "../src/platform/installer-contract.mjs";
-import { definePlatformAdapter } from "../src/platform/platform-contract.mjs";
+import {
+  assertResolvedPlatformPaths,
+  definePlatformAdapter,
+} from "../src/platform/platform-contract.mjs";
 import { getPlatformAdapter, supportedPlatforms } from "../src/platform/platform-registry.mjs";
 
 const macos = getPlatformAdapter("darwin");
-const paths = macos.resolvePaths({
+const paths = macos.paths.resolve({
   repoRoot: "/tmp/meetron-source",
   home: "/Users/meetron-test",
   env: {},
 });
-assert.equal(macos.meetingMuteShortcut, "Meta+d");
+assert.equal(macos.shortcuts.meetingMute, "Meta+d");
+assert.deepEqual(
+  Object.keys(macos).filter((key) => [
+    "paths", "chrome", "process", "net", "fsSecurity", "nativeHost", "audioControl", "shortcuts",
+  ].includes(key)),
+  ["paths", "chrome", "process", "net", "fsSecurity", "nativeHost", "audioControl", "shortcuts"],
+);
 assert.equal(paths.runtimeDir, "/tmp/meetron-source/.meeting-copilot-runtime");
 assert.equal(
   paths.dedicatedProfileDir,
@@ -21,7 +30,7 @@ assert.equal(
 );
 assert.deepEqual(supportedPlatforms(), ["darwin"]);
 
-const overridden = macos.resolvePaths({
+const overridden = macos.paths.resolve({
   repoRoot: "/tmp/meetron-source",
   home: "/Users/meetron-test",
   env: {
@@ -31,6 +40,15 @@ const overridden = macos.resolvePaths({
 });
 assert.equal(overridden.runtimeDir, "/tmp/meetron-runtime");
 assert.equal(overridden.dedicatedProfileDir, "/tmp/meetron-profile");
+
+const windowsStylePaths = assertResolvedPlatformPaths({
+  runtimeDir: "C:\\Users\\Meetron\\AppData\\Local\\Meetron\\runtime",
+  dedicatedProfileDir: "C:\\Users\\Meetron\\AppData\\Local\\Meetron\\profile",
+  legacyProfileDir: "C:\\Users\\Meetron\\AppData\\Local\\Meetron\\legacy",
+  chromeApplications: ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"],
+  nativeMessagingManifestDirs: ["C:\\Users\\Meetron\\AppData\\Local\\Meetron\\native-host"],
+});
+assert.match(windowsStylePaths.runtimeDir, /^C:/);
 
 assert.throws(
   () => getPlatformAdapter("win32"),

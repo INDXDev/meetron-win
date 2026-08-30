@@ -3,7 +3,7 @@
 set -u
 
 repo_root="$(cd "$(dirname "$0")" && pwd)"
-"$repo_root/scripts/setup-meetron.sh"
+node "$repo_root/src/cli/setup-meetron.mjs"
 status=$?
 
 show_notice() {

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,8 +8,10 @@ import {
   getMeetingProvider,
   normalizeMeeting,
 } from "../src/providers/provider-registry.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const platform = getPlatformAdapter();
 const readsUrlFromStdin = process.argv[2] === "--url-stdin";
 if (!readsUrlFromStdin && !process.argv[2]) {
   process.stderr.write("Usage: node scripts/session-launch.mjs MEETING_URL | --url-stdin\n");
@@ -30,7 +31,7 @@ try {
 
 function run(command, args = [], { input = null, acceptedExitCodes = [0] } = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, args, {
+    const child = platform.process.spawn(command, args, {
       cwd: repoRoot,
       env: process.env,
       stdio: [input === null ? "inherit" : "pipe", "inherit", "inherit"],
@@ -53,13 +54,18 @@ function run(command, args = [], { input = null, acceptedExitCodes = [0] } = {})
 }
 
 const cdp = `http://127.0.0.1:${process.env.MEETING_COPILOT_CDP_PORT || "9223"}`;
+const cli = (name, args = [], options = {}) => run(
+  process.execPath,
+  [resolve(repoRoot, `src/cli/${name}.mjs`), ...args],
+  options,
+);
 const operations = {
-  installControlUi: () => run(resolve(repoRoot, "scripts/install-control-ui.sh"), ["--quiet"]),
-  configureAudio: () => run(resolve(repoRoot, "scripts/configure-audio.sh")),
-  startVoice: () => run(resolve(repoRoot, "scripts/open-chatgpt-live.sh"), ["--restart-profile"]),
+  installControlUi: () => cli("install-control-ui", ["--quiet"]),
+  configureAudio: () => cli("configure-audio"),
+  startVoice: () => cli("open-chatgpt-live", ["--restart-profile"]),
   prepareParticipant: async () => {
-    const preparation = await run(
-      resolve(repoRoot, "scripts/open-gpt-participant.sh"),
+    const preparation = await cli(
+      "open-gpt-participant",
       ["--url-stdin", "--join"],
       { input: `${meeting.url}\n`, acceptedExitCodes: [0, 16] },
     );
@@ -77,11 +83,11 @@ const operations = {
   ]),
   closeParticipantBrowser: async () => {
     process.stderr.write("[INFO] Closing the dedicated browser after launch failure.\n");
-    await run(resolve(repoRoot, "scripts/close-dedicated-chrome.sh"));
+    await cli("close-dedicated-chrome");
   },
   restoreAudio: async () => {
     process.stderr.write("[INFO] Finishing Meetron audio cleanup after launch failure.\n");
-    await run(resolve(repoRoot, "scripts/restore-audio.sh"));
+    await cli("restore-audio");
   },
 };
 

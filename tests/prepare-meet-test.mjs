@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 
-import { execFile, spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { connectToChromeOverCDP } from "../scripts/playwright-cdp.mjs";
+import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
 
-const execFileAsync = promisify(execFile);
+const { run: execFileAsync, spawn } = macosPlatformAdapter.process;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const executablePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const profileDir = await mkdtemp(resolve(tmpdir(), "meeting-copilot-prepare-meet-"));

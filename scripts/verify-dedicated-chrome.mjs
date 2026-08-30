@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
-const execFileAsync = promisify(execFile);
+const platform = getPlatformAdapter();
 let profileDir = "";
 let port = "";
 
@@ -25,44 +24,19 @@ if (!profileDir || !/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65_
   process.exit(2);
 }
 
-const { stdout: processList } = await execFileAsync("/bin/ps", ["-axo", "pid=,command="], {
-  timeout: 3_000,
-});
 const expectedProfileArgument = `--user-data-dir=${profileDir} --no-first-run`;
 const expectedPortArgument = `--remote-debugging-port=${port}`;
-const chromePids = processList
-  .split("\n")
-  .map((line) => {
-    const match = line.match(/^\s*(\d+)\s+(.*)$/);
-    return match ? { pid: Number(match[1]), command: match[2] } : null;
-  })
+const chromePids = (await platform.chrome.profileProcesses(profileDir))
   .filter(
     (entry) =>
-      entry &&
-      entry.command.includes("/Contents/MacOS/") &&
-      !entry.command.includes("/Helper") &&
       entry.command.includes("--remote-debugging-address=127.0.0.1") &&
       entry.command.includes(expectedPortArgument) &&
       entry.command.includes(expectedProfileArgument),
   )
   .map((entry) => entry.pid);
 
-let listenerPids = [];
-try {
-  const { stdout } = await execFileAsync(
-    "/usr/sbin/lsof",
-    ["-nP", "-t", `-iTCP@127.0.0.1:${port}`, "-sTCP:LISTEN"],
-    { timeout: 3_000 },
-  );
-  listenerPids = stdout
-    .split("\n")
-    .map(Number)
-    .filter(Number.isInteger);
-} catch {
-  // lsof exits with status 1 when no process is listening.
-}
-
-const pid = chromePids.find((candidate) => listenerPids.includes(candidate));
+const listenerPid = await platform.net.listenerPid(Number(port));
+const pid = chromePids.find((candidate) => candidate === listenerPid);
 if (!pid) {
   process.stderr.write("The local automation endpoint does not belong to the dedicated Chrome profile.\n");
   process.exit(1);

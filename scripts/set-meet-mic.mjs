@@ -2,12 +2,12 @@
 
 // Compatibility entry point for existing users and scripts. New integrations
 // should call set-participant-mic.mjs with an explicit provider.
-import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
-const result = spawnSync(
+const result = getPlatformAdapter().process.spawnSync(
   process.execPath,
   [
     resolve(scriptsDir, "set-participant-mic.mjs"),

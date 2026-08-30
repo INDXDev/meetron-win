@@ -27,7 +27,7 @@ guarantee uninterrupted automation after an upstream UI change.
 
 1. Update to the latest version without discarding local changes.
 2. Run `npm ci` and `npm test`.
-3. Run `./scripts/check-env.sh`.
+3. Run `node src/cli/check-env.mjs`.
 4. Reproduce with a meeting that contains no confidential information.
 5. Remove meeting URLs, Zoom passcodes, Project identifiers, cookies, account
    names, and authentication information from every attachment.

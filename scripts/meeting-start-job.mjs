@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertSessionOwnership } from "../src/core/session-state.mjs";
 import { getMeetingProvider } from "../src/providers/provider-registry.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const platform = getPlatformAdapter();
 const runtimeDir = resolve(
   process.env.MEETING_COPILOT_RUNTIME_DIR || resolve(repoRoot, ".meeting-copilot-runtime"),
 );
@@ -96,7 +97,7 @@ const baseState = {
 
 writeState({ ...baseState, status: "running" });
 
-const child = spawn(resolve(repoRoot, "scripts/start-meetron.sh"), ["--url-stdin"], {
+const child = platform.process.spawn(process.execPath, [resolve(repoRoot, "src/cli/start-meetron.mjs"), "--url-stdin"], {
   cwd: repoRoot,
   env: process.env,
   stdio: ["pipe", "inherit", "inherit"],

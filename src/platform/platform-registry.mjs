@@ -3,7 +3,7 @@ import { macosPlatformAdapter } from "./macos/macos-platform-adapter.mjs";
 
 const adapters = new Map([[macosPlatformAdapter.id, macosPlatformAdapter]]);
 
-export function getPlatformAdapter(platformId = process.platform) {
+export function getPlatformAdapter(platformId = process.env.MEETRON_PLATFORM || process.platform) {
   const adapter = adapters.get(platformId);
   if (!adapter) {
     throw new MeetronError(

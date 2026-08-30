@@ -1,4 +1,4 @@
-import { isAbsolute } from "node:path";
+import { posix, win32 } from "node:path";
 import { MeetronError } from "../core/errors.mjs";
 
 const REQUIRED_PATH_FIELDS = Object.freeze([
@@ -6,6 +6,37 @@ const REQUIRED_PATH_FIELDS = Object.freeze([
   "dedicatedProfileDir",
   "legacyProfileDir",
 ]);
+
+const REQUIRED_CAPABILITIES = Object.freeze({
+  paths: ["resolve"],
+  chrome: ["applications", "executable", "launch", "profileProcesses"],
+  process: [
+    "run", "runSync", "spawn", "spawnSync", "exists", "command",
+    "terminate", "terminateTree", "commandEnvironment",
+  ],
+  net: ["listenerPid"],
+  fsSecurity: ["secureDir", "secureFile"],
+  nativeHost: ["installManifest", "uninstallManifest"],
+  audioControl: ["executableCandidates", "fallbackExecutableCandidates"],
+  shortcuts: [],
+});
+
+function assertCapability(adapterId, name, capability, methods) {
+  if (!capability || typeof capability !== "object" || Array.isArray(capability)) {
+    throw new MeetronError(
+      "INVALID_PLATFORM_ADAPTER",
+      `Platform adapter ${adapterId} requires the ${name} capability group`,
+    );
+  }
+  for (const method of methods) {
+    if (typeof capability[method] !== "function") {
+      throw new MeetronError(
+        "INVALID_PLATFORM_ADAPTER",
+        `Platform adapter ${adapterId} ${name} capability must implement ${method}()`,
+      );
+    }
+  }
+}
 
 export function definePlatformAdapter(definition) {
   if (!definition || typeof definition !== "object" || Array.isArray(definition)) {
@@ -20,36 +51,43 @@ export function definePlatformAdapter(definition) {
       `Platform adapter ${definition.id} requires a label`,
     );
   }
-  if (typeof definition.resolvePaths !== "function") {
+  for (const [name, methods] of Object.entries(REQUIRED_CAPABILITIES)) {
+    assertCapability(definition.id, name, definition[name], methods);
+  }
+  if (typeof definition.shortcuts.meetingMute !== "string" || !definition.shortcuts.meetingMute) {
     throw new MeetronError(
       "INVALID_PLATFORM_ADAPTER",
-      `Platform adapter ${definition.id} must implement resolvePaths()`,
+      `Platform adapter ${definition.id} requires shortcuts.meetingMute`,
     );
   }
-  if (typeof definition.meetingMuteShortcut !== "string" || !definition.meetingMuteShortcut) {
-    throw new MeetronError(
-      "INVALID_PLATFORM_ADAPTER",
-      `Platform adapter ${definition.id} requires a meetingMuteShortcut`,
-    );
-  }
-  return Object.freeze({ ...definition });
+  return Object.freeze({
+    ...definition,
+    ...Object.fromEntries(
+      Object.keys(REQUIRED_CAPABILITIES).map((name) => [name, Object.freeze({ ...definition[name] })]),
+    ),
+  });
+}
+
+export function isAbsolutePlatformPath(value) {
+  return typeof value === "string" && (posix.isAbsolute(value) || win32.isAbsolute(value));
 }
 
 export function assertResolvedPlatformPaths(paths) {
   for (const field of REQUIRED_PATH_FIELDS) {
-    if (typeof paths?.[field] !== "string" || !isAbsolute(paths[field])) {
+    if (!isAbsolutePlatformPath(paths?.[field])) {
       throw new MeetronError(
         "INVALID_PLATFORM_PATHS",
         `Platform path ${field} must be absolute`,
       );
     }
   }
-  if (!Array.isArray(paths.chromeApplications) ||
-      paths.chromeApplications.some((entry) => typeof entry !== "string" || !isAbsolute(entry))) {
-    throw new MeetronError(
-      "INVALID_PLATFORM_PATHS",
-      "chromeApplications must contain absolute paths",
-    );
+  for (const field of ["chromeApplications", "nativeMessagingManifestDirs"]) {
+    if (!Array.isArray(paths[field]) || paths[field].some((entry) => !isAbsolutePlatformPath(entry))) {
+      throw new MeetronError(
+        "INVALID_PLATFORM_PATHS",
+        `${field} must contain absolute paths`,
+      );
+    }
   }
   return paths;
 }

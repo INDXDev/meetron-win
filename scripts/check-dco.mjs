@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+
+// This repository-maintenance command runs in Linux CI as well as on macOS.
+// It only needs the adapter's platform-owned child-process primitive.
+const platform = macosPlatformAdapter;
 
 function usage() {
   process.stdout.write("Usage: node scripts/check-dco.mjs BASE_SHA HEAD_SHA\n");
@@ -21,7 +25,7 @@ if (!validRevision.test(base || "") || !validRevision.test(head || "")) {
 
 let output;
 try {
-  output = execFileSync(
+  output = platform.process.runSync(
     "git",
     ["log", "--format=%H%x1f%an%x1f%ae%x1f%B%x1e", `${base}..${head}`],
     { encoding: "utf8" },

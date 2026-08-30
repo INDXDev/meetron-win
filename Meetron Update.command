@@ -3,7 +3,7 @@
 set -u
 
 repo_root="$(cd "$(dirname "$0")" && pwd)"
-"$repo_root/scripts/update-meetron.sh"
+node "$repo_root/src/cli/update-meetron.mjs"
 update_status=$?
 
 show_notice() {

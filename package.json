@@ -29,11 +29,11 @@
   ],
   "type": "module",
   "scripts": {
-    "build:audio": "./scripts/build-audio-control.sh && ./native/audio-driver/build-driver.sh",
-    "package:community": "./scripts/package-community-release.sh",
+    "build:audio": "node src/cli/build-audio-control.mjs && ./native/audio-driver/build-driver.sh",
+    "package:community": "node src/cli/package-community-release.mjs",
     "package:audio": "./native/audio-driver/package-driver.sh",
     "package:audio:release": "MEETRON_RELEASE_BUILD=1 ./native/audio-driver/package-driver.sh",
-    "test": "./tests/scripts-test.sh",
+    "test": "node tests/run-tests.mjs",
     "test:native": "./native/audio-driver/test-driver.sh",
     "test:package": "./native/audio-driver/test-package.sh"
   },
