@@ -49,14 +49,17 @@ export function createAudioBackends({ labelPrefix = "Meetron: " } = {}) {
 }
 
 function configuredAudioLabelPrefix() {
-  if (process.env.MEETING_COPILOT_AUDIO_LABEL_PREFIX) {
+  // A blank prefix must fall back to the default: this runs while the module is
+  // being imported, so throwing here would break every command that reads audio
+  // status, including the restore path used by uninstall.
+  if (process.env.MEETING_COPILOT_AUDIO_LABEL_PREFIX?.trim()) {
     return process.env.MEETING_COPILOT_AUDIO_LABEL_PREFIX;
   }
   if (existsSync(envPath)) {
     const match = readFileSync(envPath, "utf8").match(
       /^MEETING_COPILOT_AUDIO_LABEL_PREFIX=['"]?([^'"\r\n]+)['"]?$/m,
     );
-    if (match?.[1]) return match[1];
+    if (match?.[1]?.trim()) return match[1];
   }
   return "Meetron: ";
 }

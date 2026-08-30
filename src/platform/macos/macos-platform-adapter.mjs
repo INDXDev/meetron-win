@@ -167,7 +167,12 @@ export const macosPlatformAdapter = definePlatformAdapter({
           ["-nP", "-t", `-iTCP@${host}:${port}`, "-sTCP:LISTEN"],
           { timeout: 3_000 },
         );
-        return stdout.split("\n").map(Number).find(Number.isInteger) ?? null;
+        // lsof -t prints one PID per line and a trailing newline. Number("")
+        // is 0 and passes Number.isInteger, so blank lines must be rejected.
+        return stdout
+          .split("\n")
+          .map((line) => Number(line.trim()))
+          .find((pid) => Number.isInteger(pid) && pid > 0) ?? null;
       } catch {
         return null;
       }

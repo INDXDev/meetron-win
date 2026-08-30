@@ -83,6 +83,13 @@ runMain(async () => {
   }
   process.stdout.write("Meetron setup\n=============\n");
   if (platform.id !== "darwin") throw cliError("[ERROR] Meetron supports macOS only.", 1);
+  const macosVersion = await run("sw_vers", ["-productVersion"]).then(
+    ({ stdout }) => stdout.trim(),
+    () => "unknown",
+  );
+  if (!(Number(macosVersion.split(".")[0]) >= 13)) {
+    throw cliError(`[ERROR] macOS 13 or later is required (found ${macosVersion}).`, 1);
+  }
   const requiredVersion = process.env.MEETRON_SETUP_AUDIO_VERSION || "0.1.2";
   const receiptId = process.env.MEETRON_SETUP_RECEIPT_ID || "io.github.bb8ad8.meetron.audio.pkg";
   const installed = await installedPackageVersion(receiptId);

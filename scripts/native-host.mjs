@@ -39,11 +39,19 @@ import {
   createParticipantStatus,
 } from "../src/core/participant-state.mjs";
 import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
+import { loadEnvironment } from "../src/cli/cli-utils.mjs";
 
 const EXTENSION_ID = "jlikakgdldiihhflkobhnpfegjlcakdd";
 const EXPECTED_ORIGIN = `chrome-extension://${EXTENSION_ID}/`;
 const MAX_MESSAGE_BYTES = 1024 * 1024;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Chrome starts the Native Messaging Host with a minimal environment. The
+// generated launcher replaces the former native-host.sh, which exported
+// .meeting-copilot.env before starting this host, so settings such as
+// MEETING_COPILOT_PROFILE_DIR and MEETING_COPILOT_RUNTIME_DIR must be loaded
+// here. Without this the host resolves default paths while the CLI commands it
+// spawns resolve the configured ones.
+Object.assign(process.env, loadEnvironment(resolve(repoRoot, ".meeting-copilot.env")));
 const platformAdapter = getPlatformAdapter();
 const platformPaths = platformAdapter.paths.resolve({
   repoRoot,

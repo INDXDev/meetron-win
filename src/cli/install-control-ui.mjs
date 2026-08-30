@@ -75,7 +75,10 @@ runMain(async () => {
     return;
   }
   if (!existsSync(resolve(repoRoot, "node_modules/playwright-core"))) throw cliError("playwright-core is required. Run: npm ci", 1);
-  const hostPath = resolve(platformPaths.runtimeDir, "native-host");
+  // The launcher must keep an .mjs extension: it is an ESM module, and an
+  // extension-less entry point is only recognised as one through Node's syntax
+  // detection, which is not enabled on every supported Node 22 build.
+  const hostPath = resolve(platformPaths.runtimeDir, "native-host.mjs");
   const manifest = `${JSON.stringify({
     name: "com.meeting_copilot.host",
     description: "Meetron local control host",
@@ -96,7 +99,9 @@ runMain(async () => {
   let text = existsSync(envPath) ? readFileSync(envPath, "utf8") : "";
   text = updateSetting(text, "MEETING_COPILOT_NODE_PATH", process.execPath);
   if (!/^MEETING_COPILOT_CDP_PORT=/m.test(text)) {
-    text += `MEETING_COPILOT_CDP_PORT=${await availablePort()}\n`;
+    // An existing file may not end in a newline; appending directly would join
+    // the new setting onto the previous one and corrupt it.
+    text = `${text.trimEnd()}${text.trim() ? "\n" : ""}MEETING_COPILOT_CDP_PORT=${await availablePort()}\n`;
   }
   text = text.replace(/^MEETING_COPILOT_CHATGPT_CDP_PORT=.*(?:\r?\n|$)/m, "");
   const temporary = `${envPath}.${process.pid}.tmp`;

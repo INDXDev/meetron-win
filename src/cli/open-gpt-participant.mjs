@@ -18,7 +18,7 @@ import {
   waitForChild,
   runMain,
 } from "./cli-utils.mjs";
-import { ensureChrome, findChrome } from "./chrome-session.mjs";
+import { chromeLaunchArguments, ensureChrome, findChrome } from "./chrome-session.mjs";
 
 const usage = `Usage: node src/cli/open-gpt-participant.mjs [options] MEETING_URL
 
@@ -82,15 +82,10 @@ runMain(async () => {
   process.stdout.write(`Browser:      ${chromePath}\n`);
   process.stdout.write(`Profile data: ${profileDir}\n`);
   process.stdout.write(`Display name: ${participantName} (set or verify in the meeting UI)\n`);
-  const launchArgs = [
-    ...(autoPrepare ? [
-      "--remote-debugging-address=127.0.0.1",
-      `--remote-debugging-port=${port}`,
-      "--use-fake-ui-for-media-stream",
-    ] : []),
-    `--user-data-dir=${profileDir}`,
-    "--no-first-run", "--new-window", plan.initialUrl,
-  ];
+  // The shared profile is always started with its automation endpoint, because
+  // even the non-preparing path drives the new tab over CDP. Print exactly the
+  // arguments ensureChrome() will use.
+  const launchArgs = chromeLaunchArguments({ profileDir, port, url: plan.initialUrl });
   if (dryRun) {
     process.stdout.write(`[DRY RUN] open -na ${quoteCommand([chromePath])} --args ${quoteCommand(launchArgs)}\n`);
     if (join) {

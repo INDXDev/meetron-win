@@ -25,9 +25,15 @@ function node(modulePath, args = [], env = {}) {
 try {
   assert.deepEqual(readdirSync(resolve(repoRoot, "scripts")).filter((name) => name.endsWith(".sh")), []);
   const cliFiles = readdirSync(resolve(repoRoot, "src/cli")).filter((name) => name.endsWith(".mjs"));
+  // Shared modules have no command line, and these two entry points act on the
+  // real machine (Swift build, Native Host registration, Chrome launch) without
+  // parsing --help, so they must never be started from the test suite.
+  const notInvokable = new Set([
+    "cli-utils.mjs", "chrome-session.mjs", "build-audio-control.mjs", "open-control-ui-setup.mjs",
+  ]);
   for (const file of cliFiles) {
+    if (notInvokable.has(file)) continue;
     const checked = node(`src/cli/${file}`, ["--help"]);
-    if (file === "cli-utils.mjs" || file === "chrome-session.mjs" || file === "build-audio-control.mjs" || file === "open-control-ui-setup.mjs") continue;
     assert.equal(checked.status, 0, `${file}: ${checked.stderr}`);
   }
   for (const directory of ["scripts", "src", "tests"]) {
