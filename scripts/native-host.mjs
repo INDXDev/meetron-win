@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { getAudioStatus } from "./audio-backend.mjs";
 import { connectToChromeOverCDP } from "./playwright-cdp.mjs";
@@ -55,7 +56,7 @@ Object.assign(process.env, loadEnvironment(resolve(repoRoot, ".meeting-copilot.e
 const platformAdapter = getPlatformAdapter();
 const platformPaths = platformAdapter.paths.resolve({
   repoRoot,
-  home: process.env.HOME || "",
+  home: process.env.HOME || homedir(),
   env: process.env,
 });
 const appVersion = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).version;
@@ -68,6 +69,8 @@ const setupStatePath = resolve(runtimeDir, "setup.json");
 const visualContextLogPath = resolve(runtimeDir, "visual-context.log");
 const envPath = resolve(repoRoot, ".meeting-copilot.env");
 const dedicatedProfileDir = platformPaths.dedicatedProfileDir;
+process.env.MEETING_COPILOT_RUNTIME_DIR ||= runtimeDir;
+process.env.MEETING_COPILOT_PROFILE_DIR ||= dedicatedProfileDir;
 const PROFILE_LAYOUT_VERSION = 2;
 let dedicatedBrowser = null;
 let dedicatedBrowserConnection = null;
@@ -109,6 +112,8 @@ function commandEnvironment() {
   return {
     ...platformAdapter.process.commandEnvironment({ env: process.env, nodePath }),
     MEETING_COPILOT_NODE_PATH: nodePath,
+    MEETING_COPILOT_RUNTIME_DIR: runtimeDir,
+    MEETING_COPILOT_PROFILE_DIR: dedicatedProfileDir,
     MEETING_COPILOT_CDP_PORT: configuredPort("MEETING_COPILOT_CDP_PORT", "9223"),
   };
 }

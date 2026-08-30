@@ -2,7 +2,7 @@
   "name": "meetron",
   "version": "0.10.1",
   "private": true,
-  "description": "Meetron: a local macOS bridge between ChatGPT Voice and web meetings",
+  "description": "Meetron: a local bridge between ChatGPT Voice and web meetings",
   "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
@@ -16,7 +16,8 @@
     "node": "^22.0.0 || ^24.0.0"
   },
   "os": [
-    "darwin"
+    "darwin",
+    "win32"
   ],
   "keywords": [
     "chatgpt",
@@ -25,15 +26,18 @@
     "voice",
     "virtual-audio",
     "macos",
+    "windows",
     "chrome-extension"
   ],
   "type": "module",
   "scripts": {
     "build:audio": "node src/cli/build-audio-control.mjs && ./native/audio-driver/build-driver.sh",
+    "build:windows": "cargo build --manifest-path native/windows/Cargo.toml --release",
     "package:community": "node src/cli/package-community-release.mjs",
     "package:audio": "./native/audio-driver/package-driver.sh",
     "package:audio:release": "MEETRON_RELEASE_BUILD=1 ./native/audio-driver/package-driver.sh",
     "test": "node tests/run-tests.mjs",
+    "test:windows": "cargo test --manifest-path native/windows/Cargo.toml",
     "test:native": "./native/audio-driver/test-driver.sh",
     "test:package": "./native/audio-driver/test-package.sh"
   },

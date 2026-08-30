@@ -11,6 +11,7 @@ import {
 import { getPlatformAdapter, supportedPlatforms } from "../src/platform/platform-registry.mjs";
 
 const macos = getPlatformAdapter("darwin");
+const windows = getPlatformAdapter("win32");
 const paths = macos.paths.resolve({
   repoRoot: "/tmp/meetron-source",
   home: "/Users/meetron-test",
@@ -28,7 +29,7 @@ assert.equal(
   paths.dedicatedProfileDir,
   "/Users/meetron-test/Library/Application Support/MeetingCopilot/GPTParticipantChrome",
 );
-assert.deepEqual(supportedPlatforms(), ["darwin"]);
+assert.deepEqual(supportedPlatforms(), ["darwin", "win32"]);
 
 const overridden = macos.paths.resolve({
   repoRoot: "/tmp/meetron-source",
@@ -50,10 +51,28 @@ const windowsStylePaths = assertResolvedPlatformPaths({
 });
 assert.match(windowsStylePaths.runtimeDir, /^C:/);
 
+const resolvedWindows = windows.paths.resolve({
+  repoRoot: "C:\\Source\\Meetron",
+  home: "C:\\Users\\Meetron",
+  env: {
+    LOCALAPPDATA: "C:\\Users\\Meetron\\AppData\\Local",
+    MEETING_COPILOT_CHROME_PATH: "C:\\Chrome\\chrome.exe",
+  },
+});
+assert.equal(
+  resolvedWindows.runtimeDir,
+  "C:\\Users\\Meetron\\AppData\\Local\\Meetron\\Runtime",
+);
+assert.equal(
+  resolvedWindows.dedicatedProfileDir,
+  "C:\\Users\\Meetron\\AppData\\Local\\Meetron\\GPTParticipantChrome",
+);
+assert.equal(windows.shortcuts.meetingMute, "Control+d");
+assert.deepEqual(resolvedWindows.chromeApplications, ["C:\\Chrome\\chrome.exe"]);
 assert.throws(
-  () => getPlatformAdapter("win32"),
+  () => getPlatformAdapter("linux"),
   (error) => error.code === "PLATFORM_UNSUPPORTED" &&
-    error.details.supportedPlatforms.includes("darwin"),
+    error.details.supportedPlatforms.includes("win32"),
 );
 assert.throws(
   () => definePlatformAdapter({ id: "invalid", label: "Invalid" }),
@@ -70,6 +89,16 @@ assert.equal(audioBackend.aiToMeeting.uid, "test.ai-to-meeting");
 assert.throws(
   () => defineAudioBackend({ id: "invalid", label: "Invalid" }),
   (error) => error.code === "INVALID_AUDIO_BACKEND",
+);
+assert.throws(
+  () => defineAudioBackend({
+    id: "invalid-routing",
+    label: "Invalid routing",
+    meetingToAI: { name: "A" },
+    aiToMeeting: { name: "B" },
+    routing: {},
+  }),
+  (error) => error.code === "INVALID_AUDIO_BACKEND" && /routing\.chatgptInput/.test(error.message),
 );
 
 const credentialStore = defineCredentialStore({

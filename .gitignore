@@ -4,6 +4,7 @@ node_modules/
 .meeting-copilot-runtime/
 /docs/*.local.*
 /native/**/.build
+/native/windows/target
 /dist/
 *.p8
 *.p12

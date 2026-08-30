@@ -2,15 +2,19 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { connectToChromeOverCDP } from "./playwright-cdp.mjs";
 import { locatorIsVisible } from "../src/browser/meeting-browser.mjs";
 import { getMeetingProvider } from "../src/providers/provider-registry.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const runtimeDir = resolve(
-  process.env.MEETING_COPILOT_RUNTIME_DIR || resolve(repoRoot, ".meeting-copilot-runtime"),
-);
+const runtimeDir = getPlatformAdapter().paths.resolve({
+  repoRoot,
+  home: process.env.HOME || homedir(),
+  env: process.env,
+}).runtimeDir;
 const microphoneStatePath = resolve(runtimeDir, "meet-mic.json");
 const options = {
   cdp: "http://127.0.0.1:9223",

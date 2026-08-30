@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const portable = [
@@ -26,6 +26,7 @@ const macOnly = [
   "native-host-test.mjs",
   "session-cancel-test.mjs",
 ];
+const windowsOnly = ["windows-platform-test.mjs"];
 const browser = [
   "extension-ui-test.mjs",
   "chatgpt-web-test.mjs",
@@ -37,6 +38,7 @@ const browser = [
 ];
 const tests = [...portable];
 if (process.platform === "darwin") tests.push(...macOnly);
+if (process.platform === "win32") tests.push(...windowsOnly);
 if (process.platform === "darwin" &&
     process.env.MEETING_COPILOT_SKIP_BROWSER_TEST !== "1" &&
     existsSync("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")) {
@@ -44,10 +46,10 @@ if (process.platform === "darwin" &&
 }
 let failures = 0;
 for (const test of tests) {
-  const result = macosPlatformAdapter.process.spawnSync(process.execPath, [resolve(repoRoot, "tests", test)], {
+  const result = getPlatformAdapter().process.spawnSync(process.execPath, [resolve(repoRoot, "tests", test)], {
     cwd: repoRoot,
     encoding: "utf8",
-    env: { ...process.env, MEETRON_PLATFORM: "darwin" },
+    env: { ...process.env, MEETRON_PLATFORM: process.platform },
   });
   if (result.status === 0) {
     process.stdout.write(`[PASS] ${test}\n`);

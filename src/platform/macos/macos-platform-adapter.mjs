@@ -190,6 +190,17 @@ export const macosPlatformAdapter = definePlatformAdapter({
     },
   },
   nativeHost: {
+    launcherPath({ runtimeDir }) {
+      return resolve(runtimeDir, "native-host.mjs");
+    },
+    installLauncher({ runtimeDir, nodePath, scriptPath }) {
+      const launcherPath = resolve(runtimeDir, "native-host.mjs");
+      writeFileSync(launcherPath, `#!${nodePath}\nimport ${JSON.stringify(scriptPath)};\n`, {
+        mode: 0o700,
+      });
+      chmodSync(launcherPath, 0o700);
+      return launcherPath;
+    },
     installManifest({ manifest, directories, fileName }) {
       for (const directory of directories) {
         mkdirSync(directory, { recursive: true, mode: 0o700 });
