@@ -86,6 +86,10 @@ try {
   const packageInstaller = readFileSync(resolve(repoRoot, "src/cli/install-windows-package.mjs"), "utf8");
   assert.match(packageInstaller, /MEETRON_MSIX_PATH/);
   assert.match(packageInstaller, /timeout: 120_000/);
+  assert.match(packageInstaller, /shell:AppsFolder/);
+  assert.match(packageInstaller, /waitForPackagedIntegration/);
+  assert.match(packageInstaller, /Packaged Native Messaging refresh did not complete within 60 seconds/);
+  assert.doesNotMatch(packageInstaller, /await run\(resolve\(installedRoot, "runtime\/node\.exe"\)/);
   const integrationInstaller = readFileSync(resolve(repoRoot, "src/cli/install-control-ui.mjs"), "utf8");
   assert.match(integrationInstaller, /MEETRON_PACKAGED/);
   assert.match(integrationInstaller, /\.\.\/Extension/);

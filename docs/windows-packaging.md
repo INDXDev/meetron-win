@@ -122,10 +122,13 @@ node src/cli/update-meetron.mjs --package .\Meetron-VERSION-windows-x64.msix `
 The updater verifies the checksum, trusted timestamped signature, fixed package
 identity, manifest publisher, bundled Phase 3 files, and every release inner
 signature before calling `Add-AppxPackage` (the explicitly enabled local-test
-mode checks the launch-critical inner set). It then refreshes the Native Messaging host
-and confirms that the dedicated Chrome profile and its `Local State` login file
-were not changed. The offline install is noninteractive and bounded to two
-minutes, with a separate one-minute Native Messaging refresh bound;
+mode checks the launch-critical inner set). It then activates the installed shell
+through its app-model ID (`PackageFamilyName!Meetron`), rather than trying to
+execute a protected `WindowsApps` path directly, and waits for the shell to
+refresh the stable Native Messaging manifest, launcher, configuration, and
+registry entry. It confirms that the dedicated Chrome profile and its `Local
+State` login file were not changed. The offline install is noninteractive and
+bounded to two minutes, with a separate one-minute Native Messaging refresh bound;
 `--dry-run` performs all verification without installation.
 
 Source-distributed users may continue to run `Meetron Update.cmd` from a newer
