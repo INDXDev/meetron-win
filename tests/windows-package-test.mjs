@@ -68,6 +68,8 @@ try {
   assert.match(packageScript, /audio-bridge-content-script\.js/);
   const verifyScript = readFileSync(resolve(repoRoot, "src/cli/verify-windows-release.mjs"), "utf8");
   assert.match(verifyScript, /Trusted timestamped Authenticode signature is invalid/);
+  assert.match(verifyScript, /X509Certificate.*CreateFromSignedFile/);
+  assert.doesNotMatch(verifyScript, /Get-AuthenticodeSignature/);
   assert.match(verifyScript, /LOCAL-TEST MSIX cannot pass release verification/);
   const integrationInstaller = readFileSync(resolve(repoRoot, "src/cli/install-control-ui.mjs"), "utf8");
   assert.match(integrationInstaller, /MEETRON_PACKAGED/);

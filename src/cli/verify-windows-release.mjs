@@ -105,23 +105,29 @@ function assertPackageContracts(root, { release }) {
 
 async function signature(path) {
   const command = [
-    "$signature = Get-AuthenticodeSignature -LiteralPath $args[0]",
-    "[pscustomobject]@{ Status = [string]$signature.Status; Subject = [string]$signature.SignerCertificate.Subject; Timestamp = [string]$signature.TimeStamperCertificate.Subject } | ConvertTo-Json -Compress",
+    "$certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($env:MEETRON_SIGNATURE_PATH))",
+    "[pscustomobject]@{ Subject = [string]$certificate.Subject } | ConvertTo-Json -Compress",
   ].join("; ");
   const shell = process.env.SystemRoot
     ? resolve(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe")
     : "powershell.exe";
-  const { stdout } = await run(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command, path]);
+  const { stdout } = await run(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
+    env: { ...process.env, MEETRON_SIGNATURE_PATH: path },
+  });
   return JSON.parse(stdout.trim());
 }
 
 async function verifySignature(path, publisher, { requireTimestamp = true } = {}) {
   const result = await signature(path);
-  if (result.Status !== "Valid" || result.Subject !== publisher || (requireTimestamp && !result.Timestamp)) {
-    throw cliError(`[ERROR] Trusted timestamped Authenticode signature is invalid for ${path} (status=${result.Status}, subject=${result.Subject || "none"}).`, 1);
+  if (result.Subject !== publisher) {
+    throw cliError(`[ERROR] Authenticode signer subject does not match --publisher for ${path} (subject=${result.Subject || "none"}).`, 1);
   }
   const signtool = findSdkTool("signtool.exe");
-  await run(signtool, ["verify", "/pa", "/all", "/v", path]);
+  const verification = await run(signtool, ["verify", "/pa", "/all", "/v", ...(requireTimestamp ? ["/tw"] : []), path]);
+  const output = `${verification.stdout}\n${verification.stderr}`;
+  if (requireTimestamp && (!/The signature is timestamped:/i.test(output) || !/Number of warnings:\s*0/i.test(output))) {
+    throw cliError(`[ERROR] Trusted timestamped Authenticode signature is invalid for ${path}.`, 1);
+  }
 }
 
 async function verifyStage(root, { publisher, release, signed = release }) {

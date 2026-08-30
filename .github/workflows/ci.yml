@@ -50,6 +50,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           $version = (Get-Content package.json | ConvertFrom-Json).version
           $stage = (Resolve-Path 'dist/windows/ci-stage').Path
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
