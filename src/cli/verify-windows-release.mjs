@@ -26,6 +26,15 @@ Options:
   --appinstaller PATH     Also validate its checksum and package identity.
 `;
 
+const TEST_SIGNED_BINARIES = [
+  "Meetron.WindowsShell.exe",
+  "Meetron.WindowsShell.dll",
+  "native/windows/target/release/meetron-host.exe",
+  "native/windows/target/release/meetron-audioctl.exe",
+  "native/windows/target/release/meetron-credential.exe",
+];
+const TEST_VENDOR_BINARIES = ["runtime/node.exe"];
+
 function findSdkTool(name) {
   const override = process.env[`MEETRON_${name.replace(/\.exe$/i, "").toUpperCase()}_PATH`];
   if (override && existsSync(override)) return override;
@@ -136,6 +145,10 @@ async function verifySignatures(paths, publisher, { requireTimestamp = true } = 
       throw cliError(`[ERROR] Authenticode signer subject does not match --publisher for ${result.Path} (subject=${result.Subject || "none"}).`, 1);
     }
   }
+  await verifyTrustedSignatures(paths, { requireTimestamp });
+}
+
+async function verifyTrustedSignatures(paths, { requireTimestamp = true } = {}) {
   const signtool = findSdkTool("signtool.exe");
   for (let offset = 0; offset < paths.length; offset += 24) {
     const batch = paths.slice(offset, offset + 24);
@@ -151,7 +164,7 @@ async function verifySignatures(paths, publisher, { requireTimestamp = true } = 
   }
 }
 
-async function verifyStage(root, { publisher, release, signed = release }) {
+async function verifyStage(root, { publisher, release, signed = release, testSignature = false }) {
   assertPackageContracts(root, { release });
   const identity = manifestIdentity(root);
   if (identity.name !== "io.github.bb8ad8.meetron" || identity.architecture !== "x64") {
@@ -159,9 +172,21 @@ async function verifyStage(root, { publisher, release, signed = release }) {
   }
   if (publisher && identity.publisher !== publisher) throw cliError("[ERROR] Manifest publisher does not match --publisher.", 1);
   if (signed) {
-    const binaries = walkFiles(root).filter((path) => /\.(?:exe|dll)$/i.test(path));
-    if (!binaries.length) throw cliError("[ERROR] Staging tree has no signable binaries.", 1);
-    await verifySignatures(binaries, publisher, { requireTimestamp: release });
+    if (testSignature) {
+      await verifySignatures(
+        TEST_SIGNED_BINARIES.map((path) => resolve(root, path)),
+        publisher,
+        { requireTimestamp: false },
+      );
+      await verifyTrustedSignatures(
+        TEST_VENDOR_BINARIES.map((path) => resolve(root, path)),
+        { requireTimestamp: true },
+      );
+    } else {
+      const binaries = walkFiles(root).filter((path) => /\.(?:exe|dll)$/i.test(path));
+      if (!binaries.length) throw cliError("[ERROR] Staging tree has no signable binaries.", 1);
+      await verifySignatures(binaries, publisher, { requireTimestamp: release });
+    }
   }
   return identity;
 }
@@ -209,7 +234,12 @@ runMain(async () => {
     throw cliError("[ERROR] Test-signature verification is restricted to CN=Meetron Local Test.", 1);
   }
   if (stage) {
-    const identity = await verifyStage(stage, { publisher, release, signed: release || allowTestSignature });
+    const identity = await verifyStage(stage, {
+      publisher,
+      release,
+      signed: release || allowTestSignature,
+      testSignature: allowTestSignature,
+    });
     process.stdout.write(`[OK] Verified Windows package staging tree ${identity.version}.\n`);
     return;
   }
@@ -222,7 +252,12 @@ runMain(async () => {
   try {
     const makeappx = findSdkTool("makeappx.exe");
     await run(makeappx, ["unpack", "/p", msix, "/d", unpackRoot, "/o"]);
-    const identity = await verifyStage(unpackRoot, { publisher, release, signed: release || allowTestSignature });
+    const identity = await verifyStage(unpackRoot, {
+      publisher,
+      release,
+      signed: release || allowTestSignature,
+      testSignature: allowTestSignature,
+    });
     if (appInstaller) verifyAppInstaller(appInstaller, identity, msix);
     process.stdout.write(`[OK] Verified ${basename(msix)} (${identity.version}, ${release ? "signed release" : allowTestSignature ? "signed local test" : "unsigned local test"}).\n`);
   } finally {

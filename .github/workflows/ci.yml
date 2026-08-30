@@ -65,28 +65,20 @@ jobs:
             Export-Certificate -Cert $certificate -FilePath dist/windows/Meetron-Local-Test.cer | Out-Null
             Import-Certificate -FilePath dist/windows/Meetron-Local-Test.cer `
               -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
-            $signingTargets = @(Get-ChildItem $stage -Recurse -File -Include *.exe,*.dll |
-              Select-Object -ExpandProperty FullName)
-            $signingBatches = @()
-            for ($offset = 0; $offset -lt $signingTargets.Count; $offset += 24) {
-              $last = [Math]::Min($offset + 23, $signingTargets.Count - 1)
-              $signingBatches += [pscustomobject]@{ Paths = @($signingTargets[$offset..$last]) }
-            }
-            $thumbprint = $certificate.Thumbprint
-            $signingFailures = @($signingBatches | ForEach-Object -ThrottleLimit 4 -Parallel {
-              $PSNativeCommandUseErrorActionPreference = $false
-              $batch = @($_.Paths)
-              $output = & $using:signtool sign /q /fd SHA256 /sha1 $using:thumbprint /s My @batch 2>&1 |
-                Out-String
-              if ($LASTEXITCODE -ne 0) {
-                "Batch beginning at $($batch[0]):`n$output"
-              }
-            })
-            if ($signingFailures.Count) {
-              throw "Test signing failed:`n$($signingFailures -join "`n")"
-            }
+            $signingTargets = @(
+              'Meetron.WindowsShell.exe',
+              'Meetron.WindowsShell.dll',
+              'native/windows/target/release/meetron-host.exe',
+              'native/windows/target/release/meetron-audioctl.exe',
+              'native/windows/target/release/meetron-credential.exe'
+            ) | ForEach-Object { (Resolve-Path (Join-Path $stage $_)).Path }
+            Write-Host "[phase4] signing launch-critical PE files: $(Get-Date -Format o)"
+            & $signtool sign /q /fd SHA256 /sha1 $certificate.Thumbprint /s My @signingTargets
+            if ($LASTEXITCODE -ne 0) { throw 'Test signing failed' }
+            Write-Host "[phase4] verifying signed stage: $(Get-Date -Format o)"
             npm run verify:windows-package -- --stage $stage `
               --publisher 'CN=Meetron Local Test' --allow-test-signature
+            Write-Host "[phase4] packing and signing MSIX: $(Get-Date -Format o)"
             npm run package:windows:local -- --pack-stage $stage --output-dir dist/windows/signed-test
             $artifact = (Resolve-Path "dist/windows/signed-test/Meetron-$version-windows-x64-LOCAL-TEST.msix").Path
             & $signtool sign /fd SHA256 /sha1 $certificate.Thumbprint /s My $artifact
@@ -96,6 +88,7 @@ jobs:
             $profile = Join-Path $env:LOCALAPPDATA 'Meetron\GPTParticipantChrome'
             New-Item -ItemType Directory -Force $profile | Out-Null
             'preserved-ci-login-state' | Set-Content -NoNewline (Join-Path $profile 'Local State')
+            Write-Host "[phase4] verifying, installing, and refreshing integration: $(Get-Date -Format o)"
             node src/cli/update-meetron.mjs --package $artifact `
               --publisher 'CN=Meetron Local Test' --allow-test-certificate
             if ((Get-Content -Raw (Join-Path $profile 'Local State')) -ne 'preserved-ci-login-state') {
@@ -103,6 +96,7 @@ jobs:
             }
           }
           finally {
+            Write-Host "[phase4] cleanup: $(Get-Date -Format o)"
             $env:MEETRON_PLATFORM = 'win32'
             try { node src/cli/install-control-ui.mjs --uninstall --quiet }
             catch { Write-Warning "Native Messaging cleanup failed: $_" }

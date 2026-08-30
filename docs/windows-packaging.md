@@ -52,7 +52,7 @@ unsigned MSIX is useful for deterministic layout, manifest, checksum, bundled
 runtime, and Phase 3 contract tests, but Windows will not install it normally.
 CI additionally signs that artifact with a disposable, non-exportable
 `CN=Meetron Local Test` certificate, trusts it only in the ephemeral runner,
-verifies all inner and outer signatures, installs it, refreshes Native
+verifies the launch-critical inner signatures and outer signature, installs it, refreshes Native
 Messaging, checks the Chrome login-state sentinel, and removes the package and
 certificate in a `finally` block. The explicit `--allow-test-certificate` flag
 accepts only that subject and only a `LOCAL-TEST` filename. Never publish a
@@ -77,7 +77,7 @@ Signer role and should trust the protected release environment subject. The
 job fails before staging when any setting is missing or the local-test
 publisher is selected.
 
-The workflow signs every staged EXE and DLL first, verifies each trusted,
+The production workflow signs every staged EXE and DLL first, verifies each trusted,
 timestamped Authenticode signature, packs the MSIX, signs the MSIX, recomputes
 its SHA-256 checksum, unpacks it again, and verifies its identity, contents,
 inner signatures, outer signature, timestamp, checksum, and App Installer
@@ -85,6 +85,14 @@ descriptor. Microsoft documents the required SHA-256 package/signature match
 and timestamping in its [SignTool guidance](https://learn.microsoft.com/windows/msix/package/sign-app-package-using-signtool),
 and recommends OIDC for the
 [Artifact Signing GitHub integration](https://learn.microsoft.com/azure/artifact-signing/how-to-signing-integrations).
+
+Pull-request CI uses a disposable two-day certificate to sign the app-controlled
+shell EXE/DLL and three Rust helpers plus the outer MSIX. Bundled Node keeps its
+vendor signature, which CI requires to be trusted and timestamped. This keeps the
+real install/update test bounded while still exercising checksum, certificate
+trust, package deployment, and state preservation. Release mode never
+accepts this reduced local-test scope: every staged EXE/DLL must carry the configured
+HSM-backed publisher signature and a trusted timestamp.
 
 Run signed betas through the same protected job. Betas use a tag-pinned
 `.appinstaller`; stable releases use the stable `releases/latest/download`
@@ -108,8 +116,9 @@ node src/cli/update-meetron.mjs --package .\Meetron-VERSION-windows-x64.msix `
 ```
 
 The updater verifies the checksum, trusted timestamped signature, fixed package
-identity, manifest publisher, bundled Phase 3 files, and every inner signature
-before calling `Add-AppxPackage`. It then refreshes the Native Messaging host
+identity, manifest publisher, bundled Phase 3 files, and every release inner
+signature before calling `Add-AppxPackage` (the explicitly enabled local-test
+mode checks the launch-critical inner set). It then refreshes the Native Messaging host
 and confirms that the dedicated Chrome profile and its `Local State` login file
 were not changed. The offline install is noninteractive and bounded to two
 minutes, with a separate one-minute Native Messaging refresh bound;

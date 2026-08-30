@@ -71,6 +71,11 @@ try {
   assert.match(verifyScript, /X509Certificate.*CreateFromSignedFile/);
   assert.doesNotMatch(verifyScript, /Get-AuthenticodeSignature/);
   assert.match(verifyScript, /offset \+= 24/);
+  assert.match(verifyScript, /TEST_SIGNED_BINARIES/);
+  assert.match(verifyScript, /TEST_VENDOR_BINARIES/);
+  assert.match(verifyScript, /Meetron\.WindowsShell\.dll/);
+  assert.match(verifyScript, /verifyTrustedSignatures/);
+  assert.match(verifyScript, /testSignature: allowTestSignature/);
   assert.match(verifyScript, /LOCAL-TEST MSIX cannot pass release verification/);
   const packageInstaller = readFileSync(resolve(repoRoot, "src/cli/install-windows-package.mjs"), "utf8");
   assert.match(packageInstaller, /MEETRON_MSIX_PATH/);
