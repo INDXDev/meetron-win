@@ -127,7 +127,7 @@ async function processCommand(pid, env = process.env) {
     const { stdout } = await execFileAsync(
       powershellExecutable(env),
       ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
-      { encoding: "utf8", timeout: 3_000, windowsHide: true },
+      { encoding: "utf8", timeout: 10_000, windowsHide: true },
     );
     return stdout.trim();
   } catch {
