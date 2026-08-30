@@ -86,6 +86,12 @@ try {
   const shellClient = readFileSync(resolve(repoRoot, "native/windows-shell/MeetronClient.cs"), "utf8");
   assert.match(shellClient, /runtime", "node\.exe/);
   assert.match(shellClient, /MEETRON_PACKAGED/);
+  const ciWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/ci.yml"), "utf8");
+  assert.match(ciWorkflow, /creating disposable certificate/);
+  assert.match(ciWorkflow, /Wait-Job \$certificateJob -Timeout 30/);
+  assert.match(ciWorkflow, /certutil\.exe/);
+  assert.match(ciWorkflow, /WaitForExit\(30000\)/);
+  assert.match(ciWorkflow, /Cert:\\CurrentUser\\Root\\\$\(\$certificate\.Thumbprint\)/);
 
   process.stdout.write("Windows MSIX staging, bundled runtime, startup, Phase 3, and fail-closed release contracts passed.\n");
 } finally {
