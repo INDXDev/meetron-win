@@ -90,3 +90,18 @@ upgrade from the latest public version.
 4. Copy the matching CHANGELOG section into the release notes and clearly mark
    beta features and best-effort platforms.
 5. Do not move or replace assets after publication; publish a new patch version.
+
+## Windows MSIX release
+
+Windows packages are produced only by the protected `Windows signed release`
+workflow. Configure its federated Artifact Signing identity and exact publisher
+subject as documented in [`docs/windows-packaging.md`](docs/windows-packaging.md),
+then run it for signed betas as well as stable releases. The workflow must pass
+inner PE, outer MSIX, timestamp, checksum, identity, App Installer, full test,
+and audit verification before any asset is attached.
+
+Do not upload `LOCAL-TEST`, unsigned, un-timestamped, or manually repacked
+artifacts. Test installation and an update from the preceding signed version on
+a clean Windows 11 account. Record whether both Chrome profiles and Google /
+ChatGPT login state survived. A certificate signature is not evidence of
+SmartScreen reputation; record the actual clean-machine result separately.

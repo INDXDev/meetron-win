@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
 import {
+  copyFileSync,
   existsSync,
+  mkdirSync,
   readFileSync,
+  readdirSync,
+  rmSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
@@ -11,6 +15,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   cliError,
+  configurationPath,
   platform,
   platformPaths,
   repoRoot,
@@ -51,6 +56,20 @@ function updateSetting(text, name, value) {
     : `${text.trimEnd()}${text.trim() ? "\n" : ""}${setting}\n`;
 }
 
+function syncDirectory(source, destination) {
+  mkdirSync(destination, { recursive: true });
+  const sourceNames = new Set(readdirSync(source));
+  for (const entry of readdirSync(destination, { withFileTypes: true })) {
+    if (!sourceNames.has(entry.name)) rmSync(resolve(destination, entry.name), { recursive: true, force: true });
+  }
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    const from = resolve(source, entry.name);
+    const to = resolve(destination, entry.name);
+    if (entry.isDirectory()) syncDirectory(from, to);
+    else if (entry.isFile()) copyFileSync(from, to);
+  }
+}
+
 runMain(async () => {
   let dryRun = false;
   let uninstall = false;
@@ -62,8 +81,12 @@ runMain(async () => {
     else if (argument === "--quiet") quiet = true;
     else throw cliError(`Unknown option: ${argument}\n${usage}`);
   }
-  const extensionDir = resolve(repoRoot, "extension");
-  if (!existsSync(resolve(extensionDir, "manifest.json"))) throw cliError(`Extension manifest not found: ${resolve(extensionDir, "manifest.json")}`, 1);
+  const packagedWindows = platform.id === "win32" && process.env.MEETRON_PACKAGED === "1";
+  const extensionSource = resolve(repoRoot, "extension");
+  const extensionDir = packagedWindows
+    ? resolve(platformPaths.runtimeDir, "../Extension")
+    : extensionSource;
+  if (!existsSync(resolve(extensionSource, "manifest.json"))) throw cliError(`Extension manifest not found: ${resolve(extensionSource, "manifest.json")}`, 1);
   const directories = platformPaths.nativeMessagingManifestDirs;
   if (uninstall) {
     if (dryRun) {
@@ -75,6 +98,10 @@ runMain(async () => {
     return;
   }
   if (!existsSync(resolve(repoRoot, "node_modules/playwright-core"))) throw cliError("playwright-core is required. Run: npm ci", 1);
+  if (packagedWindows && !dryRun) {
+    syncDirectory(extensionSource, extensionDir);
+    platform.fsSecurity.secureDir(extensionDir);
+  }
   // The launcher must keep an .mjs extension: it is an ESM module, and an
   // extension-less entry point is only recognised as one through Node's syntax
   // detection, which is not enabled on every supported Node 22 build.
@@ -102,7 +129,7 @@ runMain(async () => {
     nodePath: process.execPath,
     scriptPath: nativeHostScript,
   });
-  const envPath = resolve(repoRoot, ".meeting-copilot.env");
+  const envPath = configurationPath;
   let text = existsSync(envPath) ? readFileSync(envPath, "utf8") : "";
   text = updateSetting(text, "MEETING_COPILOT_NODE_PATH", process.execPath);
   if (!/^MEETING_COPILOT_CDP_PORT=/m.test(text)) {

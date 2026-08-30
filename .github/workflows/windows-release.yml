@@ -1,0 +1,192 @@
+name: Windows signed release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-ref:
+        description: Signed tag or commit to package (manual runs do not publish)
+        required: true
+        type: string
+      beta:
+        description: Build a signed beta with a tag-pinned update descriptor
+        required: true
+        default: true
+        type: boolean
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  package-sign-verify:
+    name: Build, HSM-sign, and verify Windows release
+    runs-on: windows-latest
+    timeout-minutes: 30
+    environment: windows-release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out immutable release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.release-ref }}
+
+      - name: Set up bundled Node.js runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Require release identity and HSM signing configuration
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          $required = @(
+            'WINDOWS_SIGNING_PUBLISHER', 'AZURE_CLIENT_ID', 'AZURE_TENANT_ID',
+            'ARTIFACT_SIGNING_ENDPOINT', 'ARTIFACT_SIGNING_ACCOUNT', 'ARTIFACT_SIGNING_PROFILE'
+          )
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace((Get-Item "Env:$name").Value)) {
+              throw "Missing fail-closed Windows release setting: $name"
+            }
+          }
+          if ($env:WINDOWS_SIGNING_PUBLISHER -eq 'CN=Meetron Local Test') {
+            throw 'The local test publisher cannot sign a release.'
+          }
+
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run build:windows
+      - run: npm test
+        env:
+          MEETING_COPILOT_SKIP_BROWSER_TEST: '1'
+          MEETRON_TEST_NATIVE_REGISTRY: '1'
+      - run: npm run test:windows
+
+      - name: Compute release names and update feed
+        id: release
+        shell: pwsh
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_REF: ${{ inputs.release-ref }}
+          EVENT_PRERELEASE: ${{ github.event.release.prerelease }}
+          INPUT_BETA: ${{ inputs.beta }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = if ($env:EVENT_TAG) { $env:EVENT_TAG } else { $env:INPUT_REF }
+          $artifact = "Meetron-$version-windows-x64.msix"
+          $base = "https://github.com/${{ github.repository }}/releases"
+          $packageUri = "$base/download/$tag/$artifact"
+          $beta = $env:EVENT_PRERELEASE -eq 'true' -or $env:INPUT_BETA -eq 'true'
+          $appInstallerUri = if ($beta) {
+            "$base/download/$tag/Meetron.appinstaller"
+          } else {
+            "$base/latest/download/Meetron.appinstaller"
+          }
+          "artifact=$artifact" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "package-uri=$packageUri" >> $env:GITHUB_OUTPUT
+          "appinstaller-uri=$appInstallerUri" >> $env:GITHUB_OUTPUT
+
+      - name: Stage unsigned Windows package
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+        run: >-
+          npm run package:windows --
+          --stage-only --stage-dir dist/windows/release-stage --skip-build
+          --publisher "$env:WINDOWS_SIGNING_PUBLISHER"
+
+      - name: Authenticate to Azure with GitHub OIDC
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: HSM-sign packaged executables and libraries
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist\windows\release-stage
+          files-folder-filter: exe,dll
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify every staged Authenticode signature
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+        run: >-
+          npm run verify:windows-package --
+          --stage dist/windows/release-stage
+          --publisher "$env:WINDOWS_SIGNING_PUBLISHER" --require-release
+
+      - name: Pack signed files into MSIX and App Installer feed
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+        run: >-
+          npm run package:windows --
+          --pack-stage dist/windows/release-stage --output-dir dist/windows
+          --publisher "$env:WINDOWS_SIGNING_PUBLISHER"
+          --package-uri "${{ steps.release.outputs.package-uri }}"
+          --appinstaller-uri "${{ steps.release.outputs.appinstaller-uri }}"
+
+      - name: HSM-sign MSIX
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist\windows\${{ steps.release.outputs.artifact }}
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Recompute signed checksum and verify distributed files
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+        run: |
+          $artifact = "dist/windows/${{ steps.release.outputs.artifact }}"
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact).Hash.ToLowerInvariant()
+          "$hash  ${{ steps.release.outputs.artifact }}" | Set-Content -Encoding ascii "$artifact.sha256"
+          npm run verify:windows-package -- `
+            --msix $artifact --appinstaller dist/windows/Meetron.appinstaller `
+            --publisher "$env:WINDOWS_SIGNING_PUBLISHER" --require-release
+
+      - name: Upload verified release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Meetron-Windows-${{ steps.release.outputs.tag }}
+          if-no-files-found: error
+          path: |
+            dist/windows/${{ steps.release.outputs.artifact }}
+            dist/windows/${{ steps.release.outputs.artifact }}.sha256
+            dist/windows/Meetron.appinstaller
+            dist/windows/Meetron.appinstaller.sha256
+
+      - name: Attach verified assets to the published GitHub release
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release upload "${{ steps.release.outputs.tag }}"
+          "dist/windows/${{ steps.release.outputs.artifact }}"
+          "dist/windows/${{ steps.release.outputs.artifact }}.sha256"
+          "dist/windows/Meetron.appinstaller"
+          "dist/windows/Meetron.appinstaller.sha256"

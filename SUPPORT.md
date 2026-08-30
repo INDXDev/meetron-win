@@ -13,7 +13,8 @@ branch or the latest GitHub Release.
 | macOS 13 or later on Intel | Best effort; Universal Binary and CI build coverage |
 | Google Chrome official build | Required |
 | Node.js 22 or 24 LTS | Supported |
-| Windows 11 Phase 2 source build | Beta; WinUI 3 shell and VB-CABLE A+B |
+| Windows 11 source build | Beta; WinUI 3 shell and VB-CABLE A+B |
+| Windows Phase 4 MSIX/update path | Beta implementation; public support requires HSM-signed clean-machine release evidence |
 | Windows driverless WebRTC audio | Experimental; explicit backend flag and separate Meet/Zoom validation required |
 | Google Meet | Beta |
 | Zoom Web App guest join | Optional beta |

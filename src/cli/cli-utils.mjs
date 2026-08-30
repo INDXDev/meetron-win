@@ -11,8 +11,11 @@ export const platformPaths = platform.paths.resolve({
   home: process.env.HOME || homedir(),
   env: process.env,
 });
+export const configurationPath = platform.id === "win32"
+  ? resolve(platformPaths.runtimeDir, "../.meeting-copilot.env")
+  : resolve(repoRoot, ".meeting-copilot.env");
 
-export function loadEnvironment(path = resolve(repoRoot, ".meeting-copilot.env"), env = process.env) {
+export function loadEnvironment(path = configurationPath, env = process.env) {
   if (!existsSync(path)) return { ...env };
   const loaded = {};
   for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {

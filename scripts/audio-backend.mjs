@@ -6,9 +6,10 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { defineAudioBackend } from "../src/audio/audio-backend-contract.mjs";
 import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
+import { configurationPath } from "../src/cli/cli-utils.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const envPath = resolve(repoRoot, ".meeting-copilot.env");
+const envPath = configurationPath;
 const platform = getPlatformAdapter();
 
 export function createAudioBackends({ labelPrefix = "Meetron: " } = {}) {

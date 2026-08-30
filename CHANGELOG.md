@@ -7,6 +7,10 @@ user-visible changes; implementation-only refactors stay in Git history.
 
 ### Added
 
+- Windows Phase 4 MSIX packaging with bundled Node.js, per-user startup task,
+  HSM-backed Authenticode release workflow, signed App Installer updates,
+  checksum/signature verification, and source/MSIX update paths that preserve
+  Chrome profiles and login state.
 - Experimental Windows driverless audio backend using a tab-to-tab WebRTC
   loopback, extension-service-worker signaling, separate Meet and Zoom Web
   preparation paths, and a reproducible WebRTC-versus-cable measurement tool.

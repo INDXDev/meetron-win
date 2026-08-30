@@ -14,5 +14,6 @@ Describe the user-visible change and why it belongs in Meetron Community.
 - [ ] `npm test`
 - [ ] `npm audit --audit-level=high`
 - [ ] Native audio tests were run when native code or packaging changed.
+- [ ] Windows packaging changes produced and verified a `LOCAL-TEST` MSIX; release signing remains fail closed.
 - [ ] I tested with non-confidential data only.
 - [ ] Every commit includes a `Signed-off-by` line (`git commit -s`).

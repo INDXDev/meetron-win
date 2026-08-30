@@ -22,6 +22,7 @@ const portable = [
   "launch-secret-transport-test.mjs",
   "cli-test.mjs",
   "updater-test.mjs",
+  "windows-package-test.mjs",
 ];
 const macOnly = [
   "dco-test.mjs",

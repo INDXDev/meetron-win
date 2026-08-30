@@ -125,8 +125,28 @@ try {
   assert.equal(dirtyUpdate.status, 31);
   assert.match(dirtyUpdate.stderr, /uncommitted tracked changes/);
 
+  if (process.platform === "win32") {
+    const windowsTarget = resolve(temporaryDir, "windows-installation");
+    const windowsLocalAppData = resolve(temporaryDir, "windows-local-app-data");
+    const windowsProfile = resolve(windowsLocalAppData, "Meetron/GPTParticipantChrome");
+    createLegacyTarget(windowsTarget);
+    initializeGit(windowsTarget);
+    mkdirSync(windowsProfile, { recursive: true });
+    writeFileSync(resolve(windowsProfile, "Local State"), "preserved-login-state\n");
+    const windowsUpdate = runUpdater(windowsTarget, {
+      MEETRON_PLATFORM: "win32",
+      LOCALAPPDATA: windowsLocalAppData,
+      HOME: temporaryDir,
+    });
+    assert.equal(windowsUpdate.status, 0, windowsUpdate.stderr || windowsUpdate.stdout);
+    assert.match(windowsUpdate.stdout, /updated successfully/);
+    assert.equal(readFileSync(resolve(windowsProfile, "Local State"), "utf8"), "preserved-login-state\n");
+    assert.match(readFileSync(resolve(windowsTarget, ".meeting-copilot.env"), "utf8"), /g-p-test/);
+    assert.equal(readFileSync(resolve(windowsTarget, ".meeting-copilot-runtime/sentinel"), "utf8"), "preserved\n");
+  }
+
   process.stdout.write(
-    "Updater preserves local state, supports BlackHole, upgrades packaged audio, and protects dirty Git trees.\n",
+    "Updater preserves local state and Windows profiles, supports BlackHole, upgrades packaged audio, and protects dirty Git trees.\n",
   );
 } finally {
   rmSync(temporaryDir, { recursive: true, force: true });

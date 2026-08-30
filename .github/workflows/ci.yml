@@ -22,7 +22,7 @@ jobs:
           - runner: windows-latest
             node: 22
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -38,6 +38,63 @@ jobs:
           MEETRON_TEST_NATIVE_REGISTRY: ${{ runner.os == 'Windows' && '1' || '0' }}
       - if: runner.os == 'Windows'
         run: npm run test:windows
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          npm run package:windows:local -- --stage-only --stage-dir dist/windows/ci-stage --skip-build
+          npm run package:windows:local -- --pack-stage dist/windows/ci-stage --output-dir dist/windows
+          npm run verify:windows-package -- --msix "dist/windows/Meetron-$version-windows-x64-LOCAL-TEST.msix" --allow-unsigned
+      - if: runner.os == 'Windows'
+        name: Test-sign, install, and update the local MSIX
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $stage = (Resolve-Path 'dist/windows/ci-stage').Path
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { throw 'signtool.exe was not found' }
+          $certificate = $null
+          try {
+            $certificate = New-SelfSignedCertificate -Type CodeSigningCert `
+              -Subject 'CN=Meetron Local Test' -CertStoreLocation 'Cert:\CurrentUser\My' `
+              -KeyExportPolicy NonExportable -NotAfter (Get-Date).AddDays(2)
+            Export-Certificate -Cert $certificate -FilePath dist/windows/Meetron-Local-Test.cer | Out-Null
+            Import-Certificate -FilePath dist/windows/Meetron-Local-Test.cer `
+              -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
+            Get-ChildItem $stage -Recurse -File -Include *.exe,*.dll | ForEach-Object {
+              & $signtool sign /fd SHA256 /sha1 $certificate.Thumbprint /s My $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Test signing failed: $($_.FullName)" }
+            }
+            npm run verify:windows-package -- --stage $stage `
+              --publisher 'CN=Meetron Local Test' --allow-test-signature
+            npm run package:windows:local -- --pack-stage $stage --output-dir dist/windows/signed-test
+            $artifact = (Resolve-Path "dist/windows/signed-test/Meetron-$version-windows-x64-LOCAL-TEST.msix").Path
+            & $signtool sign /fd SHA256 /sha1 $certificate.Thumbprint /s My $artifact
+            if ($LASTEXITCODE -ne 0) { throw 'Test MSIX signing failed' }
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact).Hash.ToLowerInvariant()
+            "$hash  $(Split-Path $artifact -Leaf)" | Set-Content -Encoding ascii "$artifact.sha256"
+            npm run verify:windows-package -- --msix $artifact `
+              --publisher 'CN=Meetron Local Test' --allow-test-signature
+            $profile = Join-Path $env:LOCALAPPDATA 'Meetron\GPTParticipantChrome'
+            New-Item -ItemType Directory -Force $profile | Out-Null
+            'preserved-ci-login-state' | Set-Content -NoNewline (Join-Path $profile 'Local State')
+            node src/cli/update-meetron.mjs --package $artifact `
+              --publisher 'CN=Meetron Local Test' --allow-test-certificate
+            if ((Get-Content -Raw (Join-Path $profile 'Local State')) -ne 'preserved-ci-login-state') {
+              throw 'Chrome login state changed during MSIX update test'
+            }
+          }
+          finally {
+            $env:MEETRON_PLATFORM = 'win32'
+            node src/cli/install-control-ui.mjs --uninstall --quiet
+            Get-AppxPackage -Name 'io.github.bb8ad8.meetron' | Remove-AppxPackage
+            if ($certificate) {
+              Remove-Item "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+              Remove-Item "Cert:\CurrentUser\TrustedPeople\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+            }
+          }
       - if: runner.os == 'macOS'
         run: npm run test:native
       - if: runner.os == 'macOS'

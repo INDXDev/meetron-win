@@ -22,11 +22,24 @@ public partial class App : Application
         {
             _window = new MainWindow();
             _window.Activate();
+            _ = RefreshPackagedIntegrationAsync();
         }
         catch (Exception error)
         {
             WriteCrash(error);
             throw;
+        }
+    }
+
+    private static async Task RefreshPackagedIntegrationAsync()
+    {
+        try
+        {
+            await new MeetronClient().InstallIntegrationAsync();
+        }
+        catch (Exception error)
+        {
+            WriteCrash(error);
         }
     }
 

@@ -28,11 +28,12 @@ Launch the source build:
 native\windows-shell\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\Meetron.WindowsShell.exe
 ```
 
-The project sets `WindowsPackageType=None` and carries the Windows App SDK
-runtime self-contained. MSIX identity, signing, startup registration, bundled
-Node, and update delivery remain Phase 4 work. The source checkout, Node.js,
-Chrome, and VB-CABLE A+B are still required. Phase 3 driverless audio and
-Phase 5 owned-driver work are also outside this project.
+The source project keeps `WindowsPackageType=None` so ordinary development
+builds remain unpackaged. Phase 4 stages that output into a separately generated
+MSIX with a bundled Node runtime, startup task, and signed App Installer update
+feed. See [`docs/windows-packaging.md`](../../docs/windows-packaging.md). Chrome
+is still required; VB-CABLE A+B is optional when the explicit Phase 3
+driverless backend is under test. Phase 5 owned-driver work remains excluded.
 
 The shell invokes `src/cli/windows-shell-command.mjs`, which frames one request
 through the existing Native Messaging host. Meeting URLs and Project URLs cross
