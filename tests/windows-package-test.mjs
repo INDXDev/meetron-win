@@ -89,9 +89,11 @@ try {
   const ciWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/ci.yml"), "utf8");
   assert.match(ciWorkflow, /creating disposable certificate/);
   assert.match(ciWorkflow, /Wait-Job \$certificateJob -Timeout 30/);
-  assert.match(ciWorkflow, /certutil\.exe/);
-  assert.match(ciWorkflow, /WaitForExit\(30000\)/);
-  assert.match(ciWorkflow, /Cert:\\CurrentUser\\Root\\\$\(\$certificate\.Thumbprint\)/);
+  assert.match(ciWorkflow, /X509Store/);
+  assert.match(ciWorkflow, /'Root'.*StoreLocation\]::CurrentUser/s);
+  assert.match(ciWorkflow, /OpenFlags\]::ReadWrite/);
+  assert.match(ciWorkflow, /FindByThumbprint/);
+  assert.match(ciWorkflow, /\$cleanupStore\.Remove\(\$cleanupCertificate\)/);
 
   process.stdout.write("Windows MSIX staging, bundled runtime, startup, Phase 3, and fail-closed release contracts passed.\n");
 } finally {

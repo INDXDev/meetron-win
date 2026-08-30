@@ -58,6 +58,7 @@ jobs:
             Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
           if (-not $signtool) { throw 'signtool.exe was not found' }
           $certificate = $null
+          $thumbprint = $null
           try {
             Write-Host "[phase4] creating disposable certificate: $(Get-Date -Format o)"
             $certificateJob = Start-Job -ScriptBlock {
@@ -79,21 +80,45 @@ jobs:
             finally {
               Remove-Job $certificateJob -Force -ErrorAction SilentlyContinue
             }
-            $certificate = Get-Item "Cert:\CurrentUser\My\$thumbprint" -ErrorAction Stop
+            $myStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+              'My', [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+            try {
+              $myStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
+              $myMatches = $myStore.Certificates.Find(
+                [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+                $thumbprint, $false)
+              if ($myMatches.Count -ne 1) {
+                throw "Disposable certificate lookup returned $($myMatches.Count) matches"
+              }
+              $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+                $myMatches[0])
+            }
+            finally {
+              $myStore.Close()
+            }
             $certificatePath = (Resolve-Path 'dist/windows').Path + '\Meetron-Local-Test.cer'
             Write-Host "[phase4] exporting disposable certificate: $(Get-Date -Format o)"
-            Export-Certificate -Cert $certificate -FilePath $certificatePath | Out-Null
+            [System.IO.File]::WriteAllBytes(
+              $certificatePath,
+              $certificate.Export(
+                [System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
             Write-Host "[phase4] trusting disposable root noninteractively: $(Get-Date -Format o)"
-            $certutil = Join-Path $env:SystemRoot 'System32\certutil.exe'
-            $trustProcess = Start-Process -FilePath $certutil `
-              -ArgumentList "-user -addstore -f Root `"$certificatePath`"" `
-              -NoNewWindow -PassThru
-            if (-not $trustProcess.WaitForExit(30000)) {
-              $trustProcess.Kill()
-              throw 'Disposable root trust import exceeded 30 seconds'
+            $rootCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+              $certificatePath)
+            $rootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+              'Root', [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+            try {
+              $rootStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+              $rootStore.Add($rootCertificate)
+              $rootMatches = $rootStore.Certificates.Find(
+                [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+                $thumbprint, $false)
+              if ($rootMatches.Count -lt 1) {
+                throw 'Disposable root trust verification failed'
+              }
             }
-            if ($trustProcess.ExitCode -ne 0) {
-              throw "Disposable root trust import failed: $($trustProcess.ExitCode)"
+            finally {
+              $rootStore.Close()
             }
             Write-Host "[phase4] disposable root trusted: $(Get-Date -Format o)"
             Write-Host "[phase4] resolving launch-critical PE files: $(Get-Date -Format o)"
@@ -135,9 +160,24 @@ jobs:
             catch { Write-Warning "Native Messaging cleanup failed: $_" }
             try { Get-AppxPackage -Name 'io.github.bb8ad8.meetron' | Remove-AppxPackage -ErrorAction Stop }
             catch { Write-Warning "MSIX cleanup failed: $_" }
-            if ($certificate) {
-              Remove-Item "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
-              Remove-Item "Cert:\CurrentUser\Root\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+            if ($thumbprint) {
+              foreach ($storeName in @('My', 'Root')) {
+                $cleanupStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+                  $storeName, [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+                try {
+                  $cleanupStore.Open(
+                    [System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                  $cleanupMatches = $cleanupStore.Certificates.Find(
+                    [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+                    $thumbprint, $false)
+                  foreach ($cleanupCertificate in $cleanupMatches) {
+                    $cleanupStore.Remove($cleanupCertificate)
+                  }
+                }
+                finally {
+                  $cleanupStore.Close()
+                }
+              }
             }
             Write-Host "[phase4] cleanup complete: $(Get-Date -Format o)"
           }
