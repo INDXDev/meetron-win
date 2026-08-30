@@ -10,6 +10,84 @@ import { cliError, platform, repoRoot, run, runMain } from "./cli-utils.mjs";
 const NATIVE_HOST_NAME = "com.meeting_copilot.host";
 const NATIVE_HOST_MANIFEST = `${NATIVE_HOST_NAME}.json`;
 const NATIVE_HOST_REGISTRY_KEY = `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}`;
+const PACKAGE_ACTIVATOR_SOURCE = String.raw`
+using System;
+using System.Runtime.InteropServices;
+
+namespace Meetron
+{
+    public static class PackageActivator
+    {
+        [Flags]
+        private enum ActivateOptions
+        {
+            None = 0,
+            NoErrorUi = 2
+        }
+
+        [ComImport]
+        [Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")]
+        private class ApplicationActivationManager
+        {
+        }
+
+        [ComImport]
+        [Guid("2E941141-7F97-4756-BA1D-9DECDE894A3D")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IApplicationActivationManager
+        {
+            [PreserveSig]
+            int ActivateApplication(
+                [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+                [MarshalAs(UnmanagedType.LPWStr)] string arguments,
+                ActivateOptions options,
+                out uint processId);
+
+            [PreserveSig]
+            int ActivateForFile(
+                [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+                IntPtr itemArray,
+                [MarshalAs(UnmanagedType.LPWStr)] string verb,
+                out uint processId);
+
+            [PreserveSig]
+            int ActivateForProtocol(
+                [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+                IntPtr itemArray,
+                out uint processId);
+        }
+
+        public static uint Activate(string appUserModelId)
+        {
+            var manager = (IApplicationActivationManager)new ApplicationActivationManager();
+            try
+            {
+                uint processId;
+                var result = manager.ActivateApplication(
+                    appUserModelId,
+                    null,
+                    ActivateOptions.NoErrorUi,
+                    out processId);
+                if (result < 0)
+                {
+                    Marshal.ThrowExceptionForHR(result);
+                }
+                if (processId == 0)
+                {
+                    throw new InvalidOperationException("Package activation returned no process ID.");
+                }
+                return processId;
+            }
+            finally
+            {
+                if (Marshal.IsComObject(manager))
+                {
+                    Marshal.FinalReleaseComObject(manager);
+                }
+            }
+        }
+    }
+}`;
 
 const usage = `Usage: node src/cli/install-windows-package.mjs --package PATH --publisher SUBJECT [--dry-run] [--allow-test-certificate]
 
@@ -106,12 +184,19 @@ runMain(async () => {
   }
   if (!packageFamilyName) throw cliError("[ERROR] Windows installed the package but its family name was not found.", 1);
   const activationScript = [
-    "$target = 'shell:AppsFolder\\' + $env:MEETRON_PACKAGE_FAMILY + '!Meetron'",
-    "Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList $target",
-  ].join("; ");
-  await run(powershell, [
+    "Add-Type -TypeDefinition @'",
+    PACKAGE_ACTIVATOR_SOURCE,
+    "'@",
+    "$aumid = $env:MEETRON_PACKAGE_FAMILY + '!Meetron'",
+    "$activatedProcessId = [Meetron.PackageActivator]::Activate($aumid)",
+    "$activatedProcessId",
+  ].join("\n");
+  const { stdout: activationOutput } = await run(powershell, [
     "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", activationScript,
   ], { env: { ...process.env, MEETRON_PACKAGE_FAMILY: packageFamilyName }, timeout: 30_000 });
+  const activationPid = activationOutput.trim().split(/\r?\n/).findLast((line) => /^\d+$/.test(line.trim()))?.trim();
+  if (!activationPid) throw cliError("[ERROR] Windows app-model activation returned no process ID.", 1);
+  process.stdout.write(`[OK] Activated ${packageFamilyName}!Meetron as process ${activationPid}.\n`);
   await waitForPackagedIntegration(paths, installedRoot);
   const after = snapshotProfile(paths.dedicatedProfileDir);
   if (before.existed && (!after.existed || before.localStateHash !== after.localStateHash)) {

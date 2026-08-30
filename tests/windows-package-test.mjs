@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -86,10 +87,26 @@ try {
   const packageInstaller = readFileSync(resolve(repoRoot, "src/cli/install-windows-package.mjs"), "utf8");
   assert.match(packageInstaller, /MEETRON_MSIX_PATH/);
   assert.match(packageInstaller, /timeout: 120_000/);
-  assert.match(packageInstaller, /shell:AppsFolder/);
+  assert.match(packageInstaller, /IApplicationActivationManager/);
+  assert.match(packageInstaller, /ActivateApplication/);
+  assert.match(packageInstaller, /Package activation returned no process ID/);
+  assert.doesNotMatch(packageInstaller, /shell:AppsFolder/);
   assert.match(packageInstaller, /waitForPackagedIntegration/);
   assert.match(packageInstaller, /Packaged Native Messaging refresh did not complete within 60 seconds/);
   assert.doesNotMatch(packageInstaller, /await run\(resolve\(installedRoot, "runtime\/node\.exe"\)/);
+  if (process.platform === "win32") {
+    const activatorSource = packageInstaller.match(/const PACKAGE_ACTIVATOR_SOURCE = String\.raw`\r?\n([\s\S]*?)`;/)?.[1];
+    assert.ok(activatorSource, "embedded package activator source must be extractable");
+    const command = `Add-Type -TypeDefinition @'\n${activatorSource}\n'@\n[Meetron.PackageActivator].FullName`;
+    const result = spawnSync(
+      resolve(process.env.SystemRoot || process.env.WINDIR || "C:\\Windows", "System32/WindowsPowerShell/v1.0/powershell.exe"),
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(command, "utf16le").toString("base64")],
+      { encoding: "utf8", timeout: 30_000 },
+    );
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Meetron\.PackageActivator/);
+  }
   const integrationInstaller = readFileSync(resolve(repoRoot, "src/cli/install-control-ui.mjs"), "utf8");
   assert.match(integrationInstaller, /MEETRON_PACKAGED/);
   assert.match(integrationInstaller, /\.\.\/Extension/);
