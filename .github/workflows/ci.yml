@@ -63,7 +63,7 @@ jobs:
               -KeyExportPolicy NonExportable -NotAfter (Get-Date).AddDays(2)
             Export-Certificate -Cert $certificate -FilePath dist/windows/Meetron-Local-Test.cer | Out-Null
             Import-Certificate -FilePath dist/windows/Meetron-Local-Test.cer `
-              -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
+              -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
             Get-ChildItem $stage -Recurse -File -Include *.exe,*.dll | ForEach-Object {
               & $signtool sign /fd SHA256 /sha1 $certificate.Thumbprint /s My $_.FullName
               if ($LASTEXITCODE -ne 0) { throw "Test signing failed: $($_.FullName)" }
@@ -93,7 +93,7 @@ jobs:
             Get-AppxPackage -Name 'io.github.bb8ad8.meetron' | Remove-AppxPackage
             if ($certificate) {
               Remove-Item "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
-              Remove-Item "Cert:\CurrentUser\TrustedPeople\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+              Remove-Item "Cert:\CurrentUser\Root\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
             }
           }
       - if: runner.os == 'macOS'
