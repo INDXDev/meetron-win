@@ -2,7 +2,7 @@
 .meeting-copilot.env
 node_modules/
 .meeting-copilot-runtime/
-/docs/
+/docs/*.local.*
 /native/**/.build
 /dist/
 *.p8

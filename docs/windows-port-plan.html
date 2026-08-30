@@ -1,0 +1,1170 @@
+<title>Meetron on Windows</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+:root {
+  --bg: #eceff0;
+  --surface: #f8fafa;
+  --surface-2: #ffffff;
+  --ink: #131a1c;
+  --ink-2: #4a585b;
+  --ink-3: #6d7b7e;
+  --rule: #d2dadb;
+  --rule-strong: #b6c2c4;
+  --accent: #0c6f7c;
+  --accent-ink: #075660;
+  --accent-soft: #dbecef;
+  --warn: #8f5a0e;
+  --warn-soft: #f4e7d1;
+  --danger: #9c3325;
+  --danger-soft: #f6ded9;
+  --good: #2b6a45;
+  --good-soft: #d8ebdf;
+  --shadow: 0 1px 2px rgba(19,26,28,.06), 0 8px 24px -16px rgba(19,26,28,.35);
+  --display: "Archivo", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1315;
+    --surface: #151c1e;
+    --surface-2: #1c2528;
+    --ink: #e4ebeb;
+    --ink-2: #a5b4b6;
+    --ink-3: #7e8e91;
+    --rule: #2a3538;
+    --rule-strong: #3b4a4d;
+    --accent: #4bbecb;
+    --accent-ink: #7ad3dd;
+    --accent-soft: #113940;
+    --warn: #d99b45;
+    --warn-soft: #382a13;
+    --danger: #e2867a;
+    --danger-soft: #391e1a;
+    --good: #6fbe90;
+    --good-soft: #17301f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1315;
+  --surface: #151c1e;
+  --surface-2: #1c2528;
+  --ink: #e4ebeb;
+  --ink-2: #a5b4b6;
+  --ink-3: #7e8e91;
+  --rule: #2a3538;
+  --rule-strong: #3b4a4d;
+  --accent: #4bbecb;
+  --accent-ink: #7ad3dd;
+  --accent-soft: #113940;
+  --warn: #d99b45;
+  --warn-soft: #382a13;
+  --danger: #e2867a;
+  --danger-soft: #391e1a;
+  --good: #6fbe90;
+  --good-soft: #17301f;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- shell ---------- */
+.shell { display: block; }
+@media (min-width: 1180px) {
+  .shell {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    gap: 0;
+    align-items: start;
+  }
+}
+
+.rail { display: none; }
+@media (min-width: 1180px) {
+  .rail {
+    display: block;
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 3.5rem 1.25rem 3rem 2rem;
+    border-right: 1px solid var(--rule);
+  }
+  .rail-title {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 1rem;
+  }
+  .rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .1rem; counter-reset: rl; }
+  .rail a {
+    display: grid;
+    grid-template-columns: 1.6rem 1fr;
+    gap: .35rem;
+    padding: .3rem .4rem .3rem 0;
+    font-family: var(--display);
+    font-size: .84rem;
+    line-height: 1.35;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-radius: 3px;
+  }
+  .rail a::before {
+    counter-increment: rl;
+    content: counter(rl, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: .68rem;
+    color: var(--ink-3);
+    padding-top: .18em;
+  }
+  .rail a:hover { color: var(--accent-ink); }
+  .rail a:hover::before { color: var(--accent); }
+  .rail a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+}
+
+/* ---------- prose grid ---------- */
+.doc {
+  display: grid;
+  grid-template-columns:
+    [full-start] minmax(1.25rem, 1fr)
+    [wide-start] minmax(0, 5rem)
+    [main-start] minmax(0, 66ch)
+    [main-end] minmax(0, 5rem)
+    [wide-end] minmax(1.25rem, 1fr)
+    [full-end];
+  padding: 2.5rem 0 6rem;
+  row-gap: 0;
+}
+.doc > * { grid-column: main; }
+.doc > .wide { grid-column: wide; }
+.doc > .full { grid-column: full; }
+
+/* ---------- type ---------- */
+h1, h2, h3, h4 { font-family: var(--display); text-wrap: balance; margin: 0; }
+h1 {
+  font-size: clamp(2.6rem, 6vw, 4.1rem);
+  font-weight: 700;
+  letter-spacing: -.035em;
+  line-height: .96;
+  margin: .35rem 0 0;
+}
+h2 {
+  font-size: clamp(1.5rem, 3vw, 1.95rem);
+  font-weight: 650;
+  letter-spacing: -.022em;
+  line-height: 1.1;
+  margin: 0 0 .2rem;
+}
+h3 {
+  font-size: 1.13rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  margin: 2rem 0 .45rem;
+}
+h4 {
+  font-size: .95rem;
+  font-weight: 600;
+  margin: 0 0 .3rem;
+}
+p { margin: 0 0 1.05rem; }
+a { color: var(--accent-ink); }
+strong { font-weight: 600; color: var(--ink); }
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: .7rem;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0;
+}
+.dek {
+  font-size: 1.18rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 1.1rem 0 0;
+  max-width: 54ch;
+}
+
+code, .mono { font-family: var(--mono); font-size: .855em; }
+p code, li code, td code, .mono-inline {
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: .08em .32em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+ul, ol { margin: 0 0 1.05rem; padding-left: 1.25rem; }
+li { margin-bottom: .4rem; }
+li::marker { color: var(--ink-3); }
+
+/* ---------- masthead ---------- */
+.masthead {
+  padding: 1rem 0 2.25rem;
+  border-bottom: 3px solid var(--ink);
+  margin-bottom: 0;
+}
+.meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem 1.4rem;
+  padding: .85rem 0 2.75rem;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 2.75rem;
+  font-family: var(--mono);
+  font-size: .72rem;
+  letter-spacing: .04em;
+  color: var(--ink-3);
+}
+.meta-strip b { color: var(--ink-2); font-weight: 500; }
+
+/* ---------- sections ---------- */
+section { padding-top: 3.25rem; }
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: .8rem;
+  margin-bottom: 1.4rem;
+  padding-bottom: .65rem;
+  border-bottom: 1px solid var(--rule-strong);
+}
+.sec-num {
+  font-family: var(--mono);
+  font-size: .72rem;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: .1em;
+  flex: none;
+  padding-top: .2em;
+}
+
+/* ---------- panels ---------- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1.35rem 1.5rem;
+  box-shadow: var(--shadow);
+}
+.panel > :last-child { margin-bottom: 0; }
+.lede-panel {
+  border-left: 3px solid var(--accent);
+  margin-bottom: 1.6rem;
+}
+.lede-panel p { font-size: 1.02rem; }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 1.6rem 0 1.2rem;
+}
+.stat { background: var(--surface); padding: 1rem 1.1rem; }
+.stat .n {
+  display: block;
+  font-family: var(--display);
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.stat .l {
+  display: block;
+  margin-top: .45rem;
+  font-family: var(--display);
+  font-size: .78rem;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+.stat .s {
+  display: block;
+  margin-top: .25rem;
+  font-family: var(--mono);
+  font-size: .65rem;
+  letter-spacing: .05em;
+  color: var(--ink-3);
+}
+
+/* ---------- chips ---------- */
+.chip {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: .63rem;
+  font-weight: 500;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  padding: .2em .5em;
+  border-radius: 3px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.chip-good { background: var(--good-soft); color: var(--good); border-color: color-mix(in srgb, var(--good) 30%, transparent); }
+.chip-warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.chip-bad  { background: var(--danger-soft); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+.chip-info { background: var(--accent-soft); color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.chip-mute { background: var(--surface-2); color: var(--ink-3); border-color: var(--rule); }
+
+/* ---------- tables ---------- */
+.scroller {
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  margin: 0 0 1rem;
+}
+table { border-collapse: collapse; width: 100%; min-width: 46rem; font-family: var(--display); font-size: .84rem; }
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  text-align: left;
+  font-family: var(--mono);
+  font-size: .64rem;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: .7rem .85rem;
+  border-bottom: 1px solid var(--rule-strong);
+  white-space: nowrap;
+}
+tbody td { padding: .72rem .85rem; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.45; color: var(--ink-2); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+td strong, td b { color: var(--ink); font-weight: 600; }
+td code { white-space: normal; word-break: break-word; }
+.cap-w { min-width: 13rem; }
+.tbl-note { font-family: var(--mono); font-size: .68rem; color: var(--ink-3); margin: .35rem 0 1.6rem; }
+
+/* ---------- flow diagram ---------- */
+.flow {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1.5rem;
+  margin: 0 0 .5rem;
+  overflow-x: auto;
+}
+.flow-row {
+  display: grid;
+  grid-template-columns: 8.5rem repeat(4, minmax(7.5rem, 1fr));
+  gap: .55rem;
+  align-items: stretch;
+  min-width: 44rem;
+}
+.flow-row + .flow-row { margin-top: .55rem; }
+.flow-label {
+  font-family: var(--mono);
+  font-size: .64rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  padding-right: .5rem;
+  text-align: right;
+  justify-content: flex-end;
+}
+.node {
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  background: var(--surface-2);
+  padding: .55rem .6rem;
+  font-family: var(--display);
+  font-size: .76rem;
+  line-height: 1.3;
+  color: var(--ink);
+  position: relative;
+}
+.node .k {
+  display: block;
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: .22rem;
+}
+.node-portable { border-color: color-mix(in srgb, var(--good) 45%, var(--rule)); background: var(--good-soft); }
+.node-adapter { border-color: color-mix(in srgb, var(--warn) 45%, var(--rule)); background: var(--warn-soft); }
+.node-native { border-color: color-mix(in srgb, var(--danger) 50%, var(--rule)); background: var(--danger-soft); }
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1.2rem;
+  margin: 1.1rem 0 0;
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--ink-2);
+  align-items: center;
+}
+.swatch { display: inline-block; width: .8rem; height: .8rem; border-radius: 2px; border: 1px solid var(--rule-strong); vertical-align: -1px; margin-right: .4rem; }
+.sw-p { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 45%, var(--rule)); }
+.sw-a { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, var(--rule)); }
+.sw-n { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 50%, var(--rule)); }
+.caption {
+  font-family: var(--mono);
+  font-size: .68rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+  margin: .55rem 0 1.6rem;
+}
+
+/* ---------- bucket cards ---------- */
+.buckets { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); margin-bottom: 1.4rem; }
+.bucket { background: var(--surface); border: 1px solid var(--rule); border-top: 3px solid var(--rule-strong); border-radius: 4px; padding: 1.1rem 1.15rem; }
+.bucket.b-p { border-top-color: var(--good); }
+.bucket.b-a { border-top-color: var(--warn); }
+.bucket.b-n { border-top-color: var(--danger); }
+.bucket h4 { font-size: 1rem; margin-bottom: .15rem; }
+.bucket .loc { font-family: var(--mono); font-size: .68rem; letter-spacing: .05em; color: var(--ink-3); margin-bottom: .7rem; }
+.bucket ul { padding-left: 1rem; margin: 0; font-family: var(--display); font-size: .82rem; line-height: 1.45; color: var(--ink-2); }
+.bucket li { margin-bottom: .3rem; }
+
+/* ---------- option cards ---------- */
+.options { display: grid; gap: 1rem; margin-bottom: 1.4rem; }
+.option {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1.2rem 1.35rem;
+  position: relative;
+}
+.option.pick { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.option-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; margin-bottom: .3rem; }
+.option-head .tag {
+  font-family: var(--mono);
+  font-size: .64rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.option h4 { font-size: 1.05rem; }
+.option p { font-family: var(--display); font-size: .87rem; line-height: 1.55; color: var(--ink-2); margin-bottom: .7rem; }
+.kv { display: grid; grid-template-columns: 6.2rem 1fr; gap: .3rem .8rem; font-size: .82rem; font-family: var(--display); color: var(--ink-2); }
+.kv dt { font-family: var(--mono); font-size: .63rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); padding-top: .25em; }
+.kv dd { margin: 0; }
+
+/* ---------- roadmap ---------- */
+.phases { display: grid; gap: 0; margin-bottom: 1.5rem; }
+.phase {
+  display: grid;
+  grid-template-columns: 3.4rem 1fr;
+  gap: 0 1.1rem;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.phase:first-child { border-top: 1px solid var(--rule); }
+.phase-n {
+  font-family: var(--mono);
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--accent);
+  padding-top: .35rem;
+  border-right: 1px solid var(--rule);
+  padding-right: .8rem;
+  text-align: right;
+}
+.phase h4 { font-size: 1.02rem; margin-bottom: .3rem; }
+.phase .goal { font-family: var(--display); font-size: .87rem; color: var(--ink-2); margin: 0 0 .6rem; line-height: 1.5; }
+.phase ul { font-family: var(--display); font-size: .82rem; color: var(--ink-2); padding-left: 1.05rem; margin-bottom: .6rem; }
+.exit {
+  font-family: var(--mono);
+  font-size: .7rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--accent);
+  border-radius: 3px;
+  padding: .5rem .65rem;
+}
+.exit b { font-weight: 600; color: var(--accent-ink); letter-spacing: .06em; text-transform: uppercase; font-size: .62rem; }
+
+/* ---------- qa ---------- */
+.qa { border-top: 1px solid var(--rule); }
+.qa-item { padding: 1.15rem 0; border-bottom: 1px solid var(--rule); }
+.qa-q { font-family: var(--display); font-weight: 600; font-size: .95rem; color: var(--ink); margin: 0 0 .35rem; display: flex; gap: .6rem; align-items: baseline; }
+.qa-q .qn { font-family: var(--mono); font-size: .68rem; color: var(--ink-3); flex: none; }
+.qa-a { font-family: var(--display); font-size: .88rem; line-height: 1.6; color: var(--ink-2); margin: 0; padding-left: 1.9rem; }
+.qa-a + .qa-a { margin-top: .5rem; }
+.verdict { font-family: var(--mono); font-size: .64rem; letter-spacing: .09em; text-transform: uppercase; color: var(--accent); }
+
+/* ---------- decisions ---------- */
+.decisions { display: grid; gap: .75rem; }
+.decision { background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--warn); border-radius: 4px; padding: .9rem 1.1rem; }
+.decision h4 { font-size: .92rem; margin-bottom: .25rem; }
+.decision p { font-family: var(--display); font-size: .84rem; color: var(--ink-2); margin: 0; line-height: 1.55; }
+
+footer {
+  margin-top: 3.5rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: .68rem;
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+html { scroll-behavior: smooth; }
+:target { scroll-margin-top: 1.5rem; }
+a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+</style>
+
+<div class="shell">
+  <nav class="rail" aria-label="Sections">
+    <p class="rail-title">Contents</p>
+    <ol>
+      <li><a href="#finding">The finding</a></li>
+      <li><a href="#anatomy">How Meetron is built</a></li>
+      <li><a href="#audit">Portability audit</a></li>
+      <li><a href="#mapping">macOS &rarr; Windows map</a></li>
+      <li><a href="#audio">The critical path: audio</a></li>
+      <li><a href="#architecture">Architecture decisions</a></li>
+      <li><a href="#native">What native Windows adds</a></li>
+      <li><a href="#roadmap">Phased roadmap</a></li>
+      <li><a href="#risks">Risks</a></li>
+      <li><a href="#decide">Decisions needed</a></li>
+    </ol>
+  </nav>
+
+  <div class="doc">
+
+    <header class="masthead">
+      <p class="eyebrow">Platform migration study</p>
+      <h1>Meetron on Windows</h1>
+      <p class="dek">A codebase audit and staged plan for shipping a genuinely native Windows build of the ChatGPT&nbsp;Voice&nbsp;&harr;&nbsp;meeting bridge &mdash; without rewriting the parts that already work.</p>
+    </header>
+
+    <div class="meta-strip">
+      <span><b>Repo</b> bb8ad8/meetron @ 8721658</span>
+      <span><b>Version</b> 0.10.1</span>
+      <span><b>Audited</b> 31 Aug 2026</span>
+      <span><b>Scope</b> full tree, 15,451 non-test LOC</span>
+    </div>
+
+    <!-- ==================== 1 ==================== -->
+    <section id="finding">
+      <div class="sec-head"><span class="sec-num">01</span><h2>The finding</h2></div>
+
+      <div class="panel lede-panel">
+        <p>Meetron is far more portable than its <code>"os": ["darwin"]</code> manifest suggests. The entire meeting-automation brain &mdash; providers, protocol, session orchestration, ChatGPT driving, audio routing, the Chrome extension &mdash; is platform-neutral JavaScript that talks to Chrome over CDP and never touches an OS API. <strong>Roughly 53% of Meetron's own code moves to Windows with zero edits.</strong></p>
+        <p>The macOS dependency is concentrated in exactly two places: a <strong>virtual audio driver</strong> and <strong>3,082 lines of bash</strong> doing process and installer plumbing. The bash is a mechanical port. The driver is the whole project.</p>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span class="n">5,916</span><span class="l">Lines that move unchanged</span><span class="s">CORE / PROVIDERS / EXTENSION</span></div>
+        <div class="stat"><span class="n">1,638</span><span class="l">Lines needing an adapter seam</span><span class="s">PROCESS + DEVICE PLUMBING</span></div>
+        <div class="stat"><span class="n">3,082</span><span class="l">Lines of bash to replace</span><span class="s">PORT TO NODE, NOT POWERSHELL</span></div>
+        <div class="stat"><span class="n">1</span><span class="l">Genuinely hard problem</span><span class="s">THE VIRTUAL AUDIO DEVICE</span></div>
+      </div>
+
+      <p>Three facts from the audit shape everything that follows.</p>
+
+      <p><strong>The audio bridge already lives in the browser, not in the OS.</strong> <code>scripts/prepare-chatgpt-live.mjs</code> and <code>scripts/prepare-zoom.mjs</code> override <code>MediaDevices.prototype.getUserMedia</code> and <code>setSinkId</code> inside the page to pin each tab to a named device. macOS system defaults are deliberately never changed &mdash; <code>getAudioStatus()</code> literally returns <code>systemDefaultsUnchanged: true</code>. All the OS has to supply is two audio endpoints whose labels start with <span class="mono-inline">Meetron: Meeting to AI</span> and <span class="mono-inline">Meetron: AI to Meeting</span>. Everything above that line is already cross-platform.</p>
+
+      <p><strong>Screen sharing needs no OS permission at all.</strong> "Send screen to GPT" is <code>page.screenshot()</code> over CDP on the meeting tab (<code>src/chatgpt/chatgpt-web.mjs:405</code>), not a system screen capture. There is no ScreenCaptureKit dependency, so there is no Windows Graphics Capture work to do. That removes what would normally be the second-hardest item on a port like this.</p>
+
+      <p><strong>The platform seam already exists &mdash; it is just too narrow.</strong> <code>src/platform/platform-contract.mjs</code> defines a real adapter interface, and <code>tests/platform-contract-test.mjs:36</code> already asserts that <code>getPlatformAdapter("win32")</code> throws. The design anticipated this port. The adapter currently carries two things (paths and a mute shortcut); it needs to carry about eight.</p>
+    </section>
+
+    <!-- ==================== 2 ==================== -->
+    <section id="anatomy">
+      <div class="sec-head"><span class="sec-num">02</span><h2>How Meetron is built</h2></div>
+
+      <p>Meetron has no native application. The user interface <em>is</em> a Chrome extension: a popup wizard plus a panel injected onto the Meet/Zoom page. That extension talks over Chrome Native Messaging to a Node.js host, which drives a second, dedicated Chrome instance over CDP using Playwright. Two virtual audio devices carry sound between the two Chrome instances.</p>
+
+      <div class="wide flow" role="img" aria-label="Meetron signal path across five stages, coloured by portability">
+        <div class="flow-row">
+          <div class="flow-label">Control</div>
+          <div class="node node-portable"><span class="k">Everyday Chrome</span>Extension popup + in-page panel</div>
+          <div class="node node-portable"><span class="k">Transport</span>Native Messaging (stdio, length-prefixed)</div>
+          <div class="node node-adapter"><span class="k">Node host</span>native-host.mjs &mdash; spawns, signals, reads state</div>
+          <div class="node node-adapter"><span class="k">Launcher</span>Dedicated Chrome + CDP :9223</div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-label">Automation</div>
+          <div class="node node-portable"><span class="k">Providers</span>Google Meet / Zoom Web drivers</div>
+          <div class="node node-portable"><span class="k">Playwright</span>connectOverCDP, locators, screenshots</div>
+          <div class="node node-portable"><span class="k">Page hooks</span>getUserMedia + setSinkId overrides</div>
+          <div class="node node-portable"><span class="k">ChatGPT</span>Voice start / stop, image attach</div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-label">Audio out</div>
+          <div class="node node-portable"><span class="k">Meeting tab</span>Remote participants&rsquo; audio</div>
+          <div class="node node-native"><span class="k">Virtual device</span>Meetron: Meeting to AI</div>
+          <div class="node node-portable"><span class="k">ChatGPT tab</span>Voice input</div>
+          <div class="node node-mute" style="border-style:dashed;opacity:.7"><span class="k">&nbsp;</span>&mdash;</div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-label">Audio back</div>
+          <div class="node node-portable"><span class="k">ChatGPT tab</span>Voice output (setSinkId)</div>
+          <div class="node node-native"><span class="k">Virtual device</span>Meetron: AI to Meeting</div>
+          <div class="node node-portable"><span class="k">Meeting tab</span>GPT-Live microphone</div>
+          <div class="node node-portable"><span class="k">Meeting</span>Human participants hear it</div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-label">OS surface</div>
+          <div class="node node-native"><span class="k">CoreAudio</span>AudioServerPlugIn &times; 2 (HAL)</div>
+          <div class="node node-native"><span class="k">Swift CLI</span>meetron-audioctl (enumerate / set default)</div>
+          <div class="node node-adapter"><span class="k">Shell</span>bash: launch, kill, install, package</div>
+          <div class="node node-native"><span class="k">Distribution</span>.pkg, codesign, notarize, staple</div>
+        </div>
+        <p class="legend">
+          <span><i class="swatch sw-p"></i>Runs on Windows as-is</span>
+          <span><i class="swatch sw-a"></i>Needs a platform adapter</span>
+          <span><i class="swatch sw-n"></i>Must be rebuilt for Windows</span>
+        </p>
+      </div>
+      <p class="caption">Only the bottom band and the two virtual-device nodes are macOS-specific. The two upper bands &mdash; where all the product behaviour lives &mdash; are browser code.</p>
+    </section>
+
+    <!-- ==================== 3 ==================== -->
+    <section id="audit">
+      <div class="sec-head"><span class="sec-num">03</span><h2>Portability audit</h2></div>
+
+      <p>Every file in the tree falls into one of three buckets. Line counts are measured, and exclude the 4,141-line test suite.</p>
+
+      <div class="wide buckets">
+        <div class="bucket b-p">
+          <h4>Moves unchanged</h4>
+          <p class="loc">5,916 LOC &middot; 53% of Meetron's own code</p>
+          <ul>
+            <li><code>src/core/*</code> &mdash; protocol, session state, orchestrator, participant state (452)</li>
+            <li><code>src/providers/*</code> &mdash; Meet + Zoom Web automation (1,070)</li>
+            <li><code>src/chatgpt/chatgpt-web.mjs</code> &mdash; Voice control, screenshot attach (534)</li>
+            <li><code>src/browser/</code>, <code>src/audio/</code> contracts (184)</li>
+            <li><code>src/platform/*.mjs</code> contracts + registry (117)</li>
+            <li><code>extension/*</code> &mdash; the entire UI (1,631)</li>
+            <li><code>scripts/prepare-*.mjs</code> &mdash; page injection (1,621)</li>
+          </ul>
+        </div>
+        <div class="bucket b-a">
+          <h4>Needs an adapter seam</h4>
+          <p class="loc">1,638 LOC &middot; refactor, then reuse</p>
+          <ul>
+            <li><code>scripts/native-host.mjs</code> (1,015) &mdash; <code>/bin/ps</code>, POSIX signals, process groups, <code>0o600</code> modes, Homebrew <code>PATH</code></li>
+            <li><code>scripts/audio-backend.mjs</code> (301) &mdash; hardcoded <code>meetron-audioctl</code> / <code>SwitchAudioSource</code> paths</li>
+            <li><code>scripts/verify-dedicated-chrome.mjs</code> (85) &mdash; <code>ps</code> + <code>lsof</code> for the CDP port ownership check</li>
+            <li><code>scripts/meeting-start-job.mjs</code>, <code>session-launch.mjs</code> (237) &mdash; detached spawn and exit-code contract</li>
+          </ul>
+        </div>
+        <div class="bucket b-n">
+          <h4>Must be rebuilt</h4>
+          <p class="loc">4,815 native + 3,082 bash</p>
+          <ul>
+            <li><code>native/audio-driver/</code> &mdash; CoreAudio AudioServerPlugIn, 4,273 lines derived from Apple's sample + a 149-line ring buffer</li>
+            <li><code>native/audio-control/</code> &mdash; Swift CoreAudio CLI (347)</li>
+            <li><code>scripts/*.sh</code> (2,461), <code>native/audio-driver/*.sh</code> (536), <code>*.command</code> (85)</li>
+            <li><code>src/platform/macos/</code> (46) &mdash; gains a <code>windows/</code> sibling</li>
+          </ul>
+        </div>
+      </div>
+
+      <p>The middle bucket is the interesting one. Those four files are <em>Node.js already</em> &mdash; they just reach for POSIX primitives inline instead of going through the adapter. Widening the contract turns them into shared code, which means the refactor pays for itself on macOS too: one implementation, two platforms.</p>
+    </section>
+
+    <!-- ==================== 4 ==================== -->
+    <section id="mapping">
+      <div class="sec-head"><span class="sec-num">04</span><h2>macOS &rarr; Windows capability map</h2></div>
+
+      <p>Every OS-level facility Meetron currently uses, where it is used, and what replaces it. <strong>Difficulty</strong> is engineering effort; <strong>risk</strong> is the chance of it going badly wrong late.</p>
+
+      <div class="wide scroller">
+        <table>
+          <thead>
+            <tr>
+              <th class="cap-w">macOS capability in use</th>
+              <th>Where</th>
+              <th class="cap-w">Windows equivalent</th>
+              <th>Difficulty</th>
+              <th>Strategy</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Virtual audio loopback devices</strong><br>CoreAudio AudioServerPlugIn, user-mode HAL bundle, &times;2</td>
+              <td><code>native/audio-driver/</code></td>
+              <td>No user-mode equivalent exists. Kernel driver only: <strong>ACX</strong> (Windows 11 audio class extension) or <strong>PortCls/SysVAD</strong> (Windows 10+). Needs an EV certificate and Microsoft attestation signing via Partner Center.</td>
+              <td><span class="chip chip-bad">Very high</span><br><span class="chip chip-bad">High risk</span></td>
+              <td><strong>Rebuild &mdash; or avoid.</strong> See &sect;05.</td>
+            </tr>
+            <tr>
+              <td><strong>Audio device enumeration &amp; default selection</strong><br>CoreAudio HAL via a Swift CLI emitting JSON</td>
+              <td><code>native/audio-control/</code>, <code>audio-backend.mjs</code></td>
+              <td><strong>MMDevice API</strong> (<code>IMMDeviceEnumerator</code>, <code>IMMDevice</code>, <code>PKEY_Device_FriendlyName</code>). Defaults via the undocumented <code>IPolicyConfig</code>, or WinRT <code>MediaDevice</code>.</td>
+              <td><span class="chip chip-warn">Medium</span><br><span class="chip chip-good">Low risk</span></td>
+              <td>Reimplement as a small C#/Rust <code>meetron-audioctl.exe</code> behind the <em>same</em> JSON CLI contract. <code>audio-backend.mjs</code> then only needs a different executable path.</td>
+            </tr>
+            <tr>
+              <td><strong>Stable device identity</strong><br>CoreAudio UID (<code>io.github.bb8ad8&hellip;.device</code>)</td>
+              <td><code>resolveDeviceTarget()</code></td>
+              <td>MMDevice endpoint ID string <code>{0.0.1.00000000}.{guid}</code>, plus friendly name and container ID as fallbacks.</td>
+              <td><span class="chip chip-good">Low</span></td>
+              <td>The <code>uid</code> field in <code>defineAudioBackend()</code> is already free-form. Populate it per platform; matching logic is unchanged.</td>
+            </tr>
+            <tr>
+              <td><strong>Chrome discovery &amp; launch</strong><br><code>open -na "Chrome.app" --args</code>, <code>.app</code> bundle paths</td>
+              <td><code>open-gpt-participant.sh</code>, <code>open-chatgpt-live.sh</code>, macOS adapter</td>
+              <td>Direct <code>spawn</code> of <code>chrome.exe</code>. Discovery via <code>HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe</code>, then Program&nbsp;Files, then <code>%LOCALAPPDATA%</code>.</td>
+              <td><span class="chip chip-good">Low</span></td>
+              <td>Move into the adapter as <code>chromeExecutables()</code> + a shared Node <code>launchChrome()</code>. Same CLI flags on both platforms.</td>
+            </tr>
+            <tr>
+              <td><strong>Application data paths</strong><br><code>~/Library/Application Support/&hellip;</code></td>
+              <td><code>macos-platform-adapter.mjs</code></td>
+              <td><code>%LOCALAPPDATA%\Meetron\</code> for profile and runtime state; <code>%APPDATA%</code> only if roaming is wanted (it should not be &mdash; Chrome profiles must not roam).</td>
+              <td><span class="chip chip-good">Trivial</span></td>
+              <td>Already abstracted. <code>resolvePaths()</code> just needs a win32 implementation, and <code>assertResolvedPlatformPaths</code> needs to accept drive-letter absolutes.</td>
+            </tr>
+            <tr>
+              <td><strong>Native Messaging host registration</strong><br>Drop a JSON manifest into two directories</td>
+              <td><code>install-control-ui.sh</code></td>
+              <td>Registry key <code>HKCU\Software\Google\Chrome\NativeMessagingHosts\com.meeting_copilot.host</code> whose default value is the absolute path to the manifest file.</td>
+              <td><span class="chip chip-good">Low</span></td>
+              <td>New adapter method <code>registerNativeHost()</code>. The manifest JSON itself is identical.</td>
+            </tr>
+            <tr>
+              <td><strong>Native host entry point</strong><br><code>native-host.sh</code> wrapper resolving Node</td>
+              <td><code>scripts/native-host.sh</code></td>
+              <td>Chrome on Windows cannot execute <code>.sh</code>. Options: a <code>.bat</code> (fragile quoting, flashes a console window) or a small <strong><code>meetron-host.exe</code> shim</strong>.</td>
+              <td><span class="chip chip-warn">Medium</span></td>
+              <td>Ship the <code>.exe</code> shim. It also solves Node discovery (registry, <code>where.exe</code>, nvm-windows, fnm) and avoids a console flash on every message.</td>
+            </tr>
+            <tr>
+              <td><strong>Process + command-line inspection</strong><br><code>ps -axo pid=,command=</code></td>
+              <td><code>verify-dedicated-chrome.mjs</code>, <code>open-gpt-participant.sh</code>, <code>close-dedicated-chrome.sh</code></td>
+              <td><code>Win32_Process.CommandLine</code> via CIM/WMI, or a native <code>NtQueryInformationProcess</code> PEB read for speed.</td>
+              <td><span class="chip chip-warn">Medium</span></td>
+              <td>Adapter method <code>listProcesses()</code>. Note the profile path will contain spaces &mdash; the current substring match on <code>--user-data-dir=&hellip; --no-first-run</code> must be made quoting-aware.</td>
+            </tr>
+            <tr>
+              <td><strong>Port ownership check</strong><br><code>lsof -iTCP@127.0.0.1:PORT -sTCP:LISTEN</code></td>
+              <td><code>verify-dedicated-chrome.mjs:52</code></td>
+              <td><code>GetExtendedTcpTable</code>, or <code>Get-NetTCPConnection -State Listen -OwningProcess</code>.</td>
+              <td><span class="chip chip-good">Low</span></td>
+              <td>Adapter method <code>listenerPid(port)</code>. This is a <em>security</em> check &mdash; it proves the CDP endpoint belongs to our Chrome &mdash; so it must not be weakened on Windows.</td>
+            </tr>
+            <tr>
+              <td><strong>Process-group termination</strong><br><code>kill(-pid, SIGTERM)</code> then <code>SIGKILL</code></td>
+              <td><code>native-host.mjs:signalLaunchProcessGroup</code></td>
+              <td>Windows has neither signals nor process groups. Correct answer: a <strong>Job Object</strong> (<code>CreateJobObject</code> + <code>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE</code>). Blunt fallback: <code>taskkill /PID n /T /F</code>.</td>
+              <td><span class="chip chip-warn">Medium</span><br><span class="chip chip-warn">Med risk</span></td>
+              <td>Adapter method <code>terminateTree()</code>. The Job Object is strictly better than the macOS behaviour &mdash; it guarantees no orphaned Chrome if the host dies.</td>
+            </tr>
+            <tr>
+              <td><strong>Detached background launch</strong><br><code>spawn(&hellip;, {detached:true})</code> + <code>unref()</code></td>
+              <td><code>native-host.mjs</code>, <code>meeting-start-job.mjs</code></td>
+              <td>Works, but <code>detached</code> on Windows allocates a new console. Add <code>windowsHide: true</code> and enrol the child in the Job Object.</td>
+              <td><span class="chip chip-good">Low</span></td>
+              <td>Same <code>terminateTree()</code> abstraction; one extra spawn option.</td>
+            </tr>
+            <tr>
+              <td><strong>Secret file protection</strong><br><code>mode: 0o600</code> / <code>0o700</code> on <code>.env</code> and runtime state</td>
+              <td><code>native-host.mjs</code>, installers</td>
+              <td>POSIX modes are silently ignored on NTFS. Needs explicit ACLs: <code>icacls</code>, or <code>SetNamedSecurityInfo</code> granting only the current user.</td>
+              <td><span class="chip chip-warn">Medium</span><br><span class="chip chip-warn">Security</span></td>
+              <td>Adapter methods <code>secureDir()</code> / <code>secureFile()</code>. Easy to overlook &mdash; the code will run correctly while silently leaving files world-readable.</td>
+            </tr>
+            <tr>
+              <td><strong>Microphone consent</strong><br>TCC prompt for Chrome; page prompt bypassed with <code>--use-fake-ui-for-media-stream</code></td>
+              <td>Chrome launch flags</td>
+              <td>Settings &rsaquo; Privacy &amp; security &rsaquo; Microphone, per-app consent store, plus the <em>Let desktop apps access your microphone</em> master toggle. The Chrome flag still handles the page-level prompt.</td>
+              <td><span class="chip chip-good">Low</span></td>
+              <td>Preflight check in diagnostics; deep-link the user to <code>ms-settings:privacy-microphone</code> when it is off.</td>
+            </tr>
+            <tr>
+              <td><strong>Screen capture</strong><br>&mdash; <em>none used</em></td>
+              <td><code>chatgpt-web.mjs:405</code></td>
+              <td>Not needed. <code>page.screenshot()</code> over CDP is identical on Windows. No Windows Graphics Capture, no permission prompt.</td>
+              <td><span class="chip chip-good">None</span></td>
+              <td>Nothing to do. Worth stating explicitly, because it is the item most ports get stuck on.</td>
+            </tr>
+            <tr>
+              <td><strong>Meet mute shortcut</strong><br><code>Meta+D</code></td>
+              <td><code>macos-platform-adapter.mjs:18</code></td>
+              <td><code>Control+D</code></td>
+              <td><span class="chip chip-good">Trivial</span></td>
+              <td>The adapter field already exists. One string.</td>
+            </tr>
+            <tr>
+              <td><strong>Node.js discovery</strong><br>Homebrew, nvm paths prepended to <code>PATH</code></td>
+              <td><code>native-host.sh</code>, <code>commandEnvironment()</code></td>
+              <td><code>where.exe node</code>, <code>HKLM\SOFTWARE\Node.js</code>, nvm-windows / fnm / Volta shims, or a bundled Node runtime.</td>
+              <td><span class="chip chip-good">Low</span></td>
+              <td>Best answer: <strong>bundle Node</strong> in the Windows installer. Removes the single most common support case on macOS.</td>
+            </tr>
+            <tr>
+              <td><strong>Interactive setup dialogs</strong><br><code>osascript</code> AppleScript alerts from <code>.command</code> files</td>
+              <td><code>Meetron Setup.command</code>, <code>setup-meetron.sh</code></td>
+              <td>No equivalent, and no good one. The right Windows answer is a real application window, not a scripted dialog.</td>
+              <td><span class="chip chip-info">Replaced</span></td>
+              <td>Superseded by the native shell (&sect;07). Do not port the dialogs.</td>
+            </tr>
+            <tr>
+              <td><strong>Gatekeeper / quarantine flow</strong><br>Unsigned <code>.command</code> "open anyway" instructions</td>
+              <td>README, <code>.command</code> files</td>
+              <td><strong>SmartScreen</strong> reputation on the installer and the host executable. Reputation accrues per signing certificate over download volume.</td>
+              <td><span class="chip chip-warn">Medium</span></td>
+              <td>Sign everything with one stable certificate from day one, including the beta, so reputation starts building early.</td>
+            </tr>
+            <tr>
+              <td><strong>Code signing &amp; notarization</strong><br>Developer ID, <code>notarytool</code>, <code>stapler</code>, <code>spctl</code></td>
+              <td><code>package-driver.sh</code>, <code>setup-meetron.sh</code></td>
+              <td><strong>Authenticode</strong> with an OV/EV certificate on a hardware token or cloud HSM (mandatory since the 2023 CA/B key-storage rules), plus <strong>Microsoft attestation signing</strong> if a kernel driver ships.</td>
+              <td><span class="chip chip-bad">High</span><br><span class="chip chip-bad">Org, not code</span></td>
+              <td>Procurement and legal-entity work. Start it in parallel with Phase&nbsp;1 &mdash; lead time, not engineering time, is the constraint.</td>
+            </tr>
+            <tr>
+              <td><strong>Installer &amp; receipts</strong><br><code>.pkg</code>, <code>pkgutil --pkg-info</code> version detection</td>
+              <td><code>setup-meetron.sh</code>, <code>update-meetron.sh</code></td>
+              <td><strong>MSIX</strong> for the app (clean uninstall, startup tasks, identity for toasts) or <strong>MSI/WiX</strong>; installed-version detection from the registry <code>UpgradeCode</code> or package family name. A kernel driver cannot ship inside MSIX &mdash; it needs <code>pnputil /add-driver /install</code> from an MSI.</td>
+              <td><span class="chip chip-warn">Medium</span></td>
+              <td>MSIX for the app. Separate MSI only if Phase&nbsp;5 happens.</td>
+            </tr>
+            <tr>
+              <td><strong>Audio stack reload</strong><br><code>killall coreaudiod</code>, or reboot</td>
+              <td><code>install-driver.sh</code></td>
+              <td>Root-enumerated device install via <code>pnputil</code>; the endpoint usually appears without a reboot.</td>
+              <td><span class="chip chip-warn">Medium</span></td>
+              <td>Only relevant under Phase&nbsp;5. A genuine UX win over macOS, which requires a restart today.</td>
+            </tr>
+            <tr>
+              <td><strong>Credential storage</strong><br>Contract defined, <em>no macOS implementation</em></td>
+              <td><code>credential-store-contract.mjs</code></td>
+              <td><strong>Windows Credential Manager</strong> (<code>CredWrite</code>/<code>CredRead</code>) or DPAPI <code>CryptProtectData</code>; WinRT <code>PasswordVault</code> for a packaged app.</td>
+              <td><span class="chip chip-good">Low</span></td>
+              <td>Windows can be the <em>first</em> platform to implement this contract. Keychain follows later.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tbl-note">Difficulty covers implementation only. Certificate procurement and Partner Center enrolment are calendar time, not developer time, and should be started before they are needed.</p>
+    </section>
+
+    <!-- ==================== 5 ==================== -->
+    <section id="audio">
+      <div class="sec-head"><span class="sec-num">05</span><h2>The critical path: getting audio into Chrome</h2></div>
+
+      <p>Every other item on that table is a week or less. This one decides the project. macOS lets you ship a virtual audio device as an unprivileged user-mode bundle; Windows does not. There is no user-mode equivalent of <code>AudioServerPlugIn</code> &mdash; an audio endpoint on Windows is a kernel driver, full stop.</p>
+
+      <p>Meetron needs two directions. Capturing meeting audio <em>out</em> of Chrome could be done driverless with WASAPI process loopback. But feeding ChatGPT's voice <em>into</em> Chrome as a microphone is the hard half: <code>getUserMedia</code> only enumerates real capture endpoints. Three ways out, in the order I would attempt them.</p>
+
+      <div class="options">
+        <div class="option pick">
+          <div class="option-head">
+            <span class="tag">Option C</span>
+            <h4>Ship on an existing virtual cable</h4>
+            <span class="chip chip-good">Recommended for bring-up</span>
+          </div>
+          <p>Depend on VB-CABLE, Virtual Audio Cable or VoiceMeeter for the beta, exactly as Meetron already depends on BlackHole for migrating macOS users. <code>AUDIO_BACKENDS</code> in <code>scripts/audio-backend.mjs</code> gains one more entry and nothing else changes &mdash; the <code>blackhole</code> entry is the precedent, already written.</p>
+          <dl class="kv">
+            <dt>Unblocks</dt><dd>The entire rest of the Windows port, within days rather than months.</dd>
+            <dt>Cost</dt><dd>Users install a third-party driver. Free VB-CABLE gives one cable; two directions need the paid A+B pack or VAC. Redistribution requires a licence agreement.</dd>
+            <dt>Watch for</dt><dd>Device labels differ from <span class="mono-inline">Meetron:&nbsp;&hellip;</span>, so the label-prefix match in <code>prepare-chatgpt-live.mjs</code> must become configurable rather than hardcoded.</dd>
+          </dl>
+        </div>
+
+        <div class="option pick">
+          <div class="option-head">
+            <span class="tag">Option B</span>
+            <h4>Driverless in-browser audio bridge</h4>
+            <span class="chip chip-info">Strategic target</span>
+          </div>
+          <p>Delete the virtual device from the design entirely. Both tabs already live in one dedicated Chrome profile with the Meetron extension loaded and message passing working. Connect them with an in-browser <code>RTCPeerConnection</code> loopback, signalled through the extension's service worker, and hand each tab the other's track.</p>
+          <p>The hooks this needs <em>already exist</em>. <code>prepare-chatgpt-live.mjs:239</code> overrides <code>getUserMedia</code> to pin a device ID; it would instead return the loopback track. <code>setSinkId</code> is already intercepted on <code>&lt;audio&gt;</code> elements and <code>AudioContext</code>; it would instead route into a <code>MediaStreamAudioDestinationNode</code>. This is a change of source, not a change of architecture &mdash; and it would simplify macOS too.</p>
+          <dl class="kv">
+            <dt>Wins</dt><dd>No driver, no kernel code, no EV certificate, no attestation signing, no admin rights, no reboot. Removes the largest install-friction item on <em>both</em> platforms.</dd>
+            <dt>Risks</dt><dd>WebRTC processing on the meeting side may mangle synthetic speech &mdash; the injected constraints must set <code>echoCancellation</code>, <code>autoGainControl</code> and <code>noiseSuppression</code> to <code>false</code>. Background-tab throttling. ~20&ndash;40&nbsp;ms added latency. Zoom Web's WASM audio path may not go through the standard <code>getUserMedia</code> at all.</dd>
+            <dt>De-risk by</dt><dd>Prototyping it on <em>macOS</em> first, where the current device path still works as a control. A two-day spike answers the Zoom question before any Windows commitment.</dd>
+          </dl>
+        </div>
+
+        <div class="option">
+          <div class="option-head">
+            <span class="tag">Option A</span>
+            <h4>Build a Windows kernel audio driver</h4>
+            <span class="chip chip-bad">Last resort</span>
+          </div>
+          <p>An ACX driver on Windows 11, or a PortCls/SysVAD-derived driver for Windows 10, exposing the same two loopback endpoints. This is the literal translation of what exists today, and it is the only option that leaves the page-level code byte-for-byte identical.</p>
+          <dl class="kv">
+            <dt>Cost</dt><dd>Kernel C, the WDK, Driver Verifier, HVCI and Secure Boot compatibility, a Partner Center hardware account, an EV certificate, attestation signing per driver revision, and a servicing obligation for every Windows release.</dd>
+            <dt>Blast radius</dt><dd>A bug is a bugcheck, not an exception. This is a different class of liability from anything currently in the repo.</dd>
+            <dt>Prerequisite</dt><dd>A legal entity that can hold the Partner Center account. This is a business decision, not an engineering one.</dd>
+          </dl>
+        </div>
+      </div>
+
+      <div class="panel lede-panel">
+        <p><strong>Recommendation.</strong> Ship Phase&nbsp;1 on Option&nbsp;C so the whole stack can be validated on real Windows hardware immediately. Run the Option&nbsp;B spike in parallel on macOS. Commit to Option&nbsp;A only if the spike proves the driverless bridge cannot carry Zoom Web &mdash; and treat that commitment as a funding decision, not a sprint.</p>
+      </div>
+    </section>
+
+    <!-- ==================== 6 ==================== -->
+    <section id="architecture">
+      <div class="sec-head"><span class="sec-num">06</span><h2>Architecture decisions</h2></div>
+
+      <p>Direct answers to the five options you raised.</p>
+
+      <div class="qa">
+        <div class="qa-item">
+          <p class="qa-q"><span class="qn">Q1</span> Shared cross-platform core with thin platform adapters?</p>
+          <p class="qa-a"><span class="verdict">Yes &mdash; and the seam already exists.</span> <code>definePlatformAdapter()</code> validates a real interface today; it just carries two fields. Grow it to eight capability groups: <code>paths</code>, <code>chrome</code>, <code>process</code>, <code>net</code>, <code>fsSecurity</code>, <code>nativeHost</code>, <code>audioControl</code>, <code>shortcuts</code>. Keep it thin &mdash; the adapter answers questions and performs primitive operations; it never contains product logic.</p>
+        </div>
+        <div class="qa-item">
+          <p class="qa-q"><span class="qn">Q2</span> Separate browser/Chrome functionality from OS-native functionality?</p>
+          <p class="qa-a"><span class="verdict">Already done &mdash; formalise and enforce it.</span> Everything under <code>src/</code> except <code>src/platform/&lt;os&gt;/</code> is browser and protocol code with no OS calls. The rule to write down: <em>only <code>src/platform/&lt;os&gt;/</code> may import <code>child_process</code> or reference an OS path.</em> There are exactly four violations today, all in <code>scripts/*.mjs</code>, and a lint rule can hold the line afterwards.</p>
+        </div>
+        <div class="qa-item">
+          <p class="qa-q"><span class="qn">Q3</span> Explicit abstraction layers for capture, permissions, tray, window management&hellip;?</p>
+          <p class="qa-a"><span class="verdict">Only for what is actually used.</span> Build abstractions for audio devices, Chrome launching, process control, port ownership, filesystem security, native-host registration and Node discovery &mdash; all seven have two real implementations, so the abstraction earns its keep.</p>
+          <p class="qa-a">Do <em>not</em> build one for screen capture (it goes through CDP, never the OS) or for window management (Meetron owns no native windows today). For tray, notifications, hotkeys and autostart, an abstraction with one implementation is speculative generality &mdash; write them Windows-only until macOS actually needs them.</p>
+        </div>
+        <div class="qa-item">
+          <p class="qa-q"><span class="qn">Q4</span> Reuse rather than rewrite?</p>
+          <p class="qa-a"><span class="verdict">Reuse aggressively &mdash; with one deliberate rewrite.</span> 5,916 lines move untouched. The 3,082 lines of bash should be ported to <strong>Node, not PowerShell</strong>: Node is already a hard dependency, the orchestration logic in <code>session-launch.mjs</code> is already Node, and a PowerShell port would create a third implementation to keep in sync forever. Porting to Node lets macOS and Windows share <em>one</em> implementation and deletes the bash outright.</p>
+        </div>
+        <div class="qa-item">
+          <p class="qa-q"><span class="qn">Q5</span> Use modern Windows APIs where they give a better experience?</p>
+          <p class="qa-a"><span class="verdict">Yes, in five specific places.</span> Job Objects for process cleanup (strictly better than the current signal dance). Windows Credential Manager for the unimplemented credential store. MMDevice for enumeration. Toast notifications and a tray icon for session state. MSIX for install, uninstall and startup registration. Each is a place where the native API is genuinely better than the portable alternative, not a place where "native" is being used decoratively.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 7 ==================== -->
+    <section id="native">
+      <div class="sec-head"><span class="sec-num">07</span><h2>What "native Windows" actually means here</h2></div>
+
+      <p>Worth stating plainly: <strong>there is no native macOS application to wrap.</strong> Meetron's UI today is a Chrome extension popup, an injected page panel, and two double-clickable <code>.command</code> shell scripts. So "make it feel native on Windows" is not a porting problem &mdash; it is a chance to build the shell that macOS never had, and to let Windows lead.</p>
+
+      <p>The Chrome extension should stay exactly as it is. It is the right place for in-meeting controls, because that is where the user's attention already is. What Windows adds is everything that belongs <em>outside</em> the browser:</p>
+
+      <div class="scroller wide">
+        <table>
+          <thead><tr><th class="cap-w">Native surface</th><th>API</th><th>Why it earns its place</th></tr></thead>
+          <tbody>
+            <tr><td><strong>System tray icon</strong></td><td><code>Shell_NotifyIcon</code> / WinUI 3</td><td>Session state at a glance &mdash; connected, GPT muted, Voice active &mdash; without opening a browser tab. Replaces polling the extension popup.</td></tr>
+            <tr><td><strong>Toast notifications</strong></td><td><code>AppNotificationManager</code> (needs an AUMID, which MSIX provides)</td><td>"GPT-Live was admitted", "Voice stopped unexpectedly". Today these failures are silent unless the panel is on screen.</td></tr>
+            <tr><td><strong>Global hotkey</strong></td><td><code>RegisterHotKey</code></td><td>Mute the GPT participant instantly from any window. This is the single most requested control and it currently requires switching to the meeting tab.</td></tr>
+            <tr><td><strong>Setup &amp; diagnostics window</strong></td><td>WinUI 3 / Windows App SDK, Mica backdrop</td><td>Replaces the <code>.command</code> files and the popup wizard with a real settings surface: audio devices, ChatGPT project, permissions, logs.</td></tr>
+            <tr><td><strong>Start at logon</strong></td><td>MSIX <code>StartupTask</code>, or Task Scheduler</td><td>The host must be reachable when Chrome first sends a Native Messaging request. A per-user startup task &mdash; <em>not</em> a Windows service, which has no user session and therefore no audio.</td></tr>
+            <tr><td><strong>Credential storage</strong></td><td>Credential Manager / DPAPI</td><td>Fills the <code>credential-store-contract.mjs</code> interface that has no implementation on either platform.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>For the shell itself, <strong>WinUI 3 on the Windows App SDK</strong> gives the most authentically native result &mdash; Mica, proper theming, real toast identity &mdash; at the cost of a C# toolchain alongside Node. Tauri&nbsp;2 on WebView2 is the lighter alternative that keeps the UI in JS. Electron would be the fastest to build and the least native-feeling; given the brief explicitly asks for a real Windows application rather than a wrapper, I would not choose it.</p>
+    </section>
+
+    <!-- ==================== 8 ==================== -->
+    <section id="roadmap">
+      <div class="sec-head"><span class="sec-num">08</span><h2>Phased roadmap</h2></div>
+
+      <p>Phases are strictly sequential in their dependencies, though Phase&nbsp;3's spike and the certificate procurement for Phase&nbsp;4 should both start early and run alongside.</p>
+
+      <div class="wide phases">
+        <div class="phase">
+          <div class="phase-n">P0</div>
+          <div>
+            <h4>Widen the seam &mdash; macOS only, zero Windows code</h4>
+            <p class="goal">The refactoring that must happen before any Windows code is written. Every change here is behaviour-preserving on macOS and independently reviewable.</p>
+            <ul>
+              <li>Grow <code>platform-contract.mjs</code> from 2 fields to the 8 capability groups. Update <code>assertResolvedPlatformPaths</code> to accept non-POSIX absolutes.</li>
+              <li>Move the four OS leaks out of <code>scripts/*.mjs</code>: <code>/bin/ps</code>, <code>lsof</code>, <code>process.kill(-pid)</code>, and the hardcoded audio-control executable paths.</li>
+              <li>Port <code>scripts/*.sh</code> to Node modules under <code>src/</code>, keeping the same CLI contracts and exit codes (<code>PREPARATION_EXIT_CODES</code> is load-bearing). Delete the bash.</li>
+              <li>Make the audio device label match configurable instead of hardcoded to the <span class="mono-inline">Meetron:&nbsp;</span> prefix.</li>
+            </ul>
+            <p class="exit"><b>Exit</b> &nbsp;<code>npm test</code> green on macOS with no user-visible change; <code>getPlatformAdapter("win32")</code> still throws; no <code>child_process</code> import outside <code>src/platform/</code>.</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-n">P1</div>
+          <div>
+            <h4>Windows bring-up on a third-party cable</h4>
+            <p class="goal">First real end-to-end session on Windows 11. Deliberately ugly &mdash; no native UI yet, setup done by hand.</p>
+            <ul>
+              <li><code>src/platform/windows/</code> implementing all eight groups; register it in <code>platform-registry.mjs</code>.</li>
+              <li><code>meetron-host.exe</code> shim + registry-based Native Messaging registration.</li>
+              <li>Job Object process control; <code>Get-NetTCPConnection</code>-equivalent port ownership check; ACL-based <code>secureFile()</code>.</li>
+              <li><code>meetron-audioctl.exe</code> over MMDevice, emitting the existing JSON contract.</li>
+              <li>New <code>vb-cable</code> entry in <code>AUDIO_BACKENDS</code>.</li>
+              <li>Add <code>windows-latest</code> to the CI matrix; <code>package.json</code> <code>os</code> becomes <code>["darwin","win32"]</code>.</li>
+            </ul>
+            <p class="exit"><b>Exit</b> &nbsp;A Google Meet session runs end to end on Windows 11: GPT-Live joins, two-way audio works, screen send works, session stop cleans up with no orphaned Chrome. Zoom Web validated separately.</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-n">P2</div>
+          <div>
+            <h4>The native Windows shell</h4>
+            <p class="goal">Turn a working port into an application. This is where the Windows build stops looking like a Mac tool.</p>
+            <ul>
+              <li>WinUI 3 app: tray icon with live session state, setup and diagnostics window, settings.</li>
+              <li>Toast notifications for admission, Voice failure and session end.</li>
+              <li>Global hotkey for GPT participant mute.</li>
+              <li>Credential store over Credential Manager &mdash; first implementation of that contract on any platform.</li>
+              <li>Microphone-privacy preflight with a deep link into Settings.</li>
+            </ul>
+            <p class="exit"><b>Exit</b> &nbsp;A user can install, configure and run a meeting without opening a terminal or reading the README.</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-n">P3</div>
+          <div>
+            <h4>Driverless audio bridge</h4>
+            <p class="goal">Remove the third-party driver dependency. Spike starts during P0 on macOS; productionised here.</p>
+            <ul>
+              <li>WebRTC loopback between the ChatGPT and meeting tabs, signalled through the extension service worker.</li>
+              <li>Rewire the existing <code>getUserMedia</code> and <code>setSinkId</code> hooks to source from the loopback instead of a device ID.</li>
+              <li>Validate against Google Meet and Zoom Web independently &mdash; Zoom is the risk.</li>
+              <li>Ship behind a backend flag; promote to default only after it holds on both providers.</li>
+            </ul>
+            <p class="exit"><b>Exit</b> &nbsp;A clean Windows machine with no audio driver installed runs a full session. Latency and audio quality measured against the cable backend, not assumed.</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-n">P4</div>
+          <div>
+            <h4>Packaging, signing and updates</h4>
+            <p class="goal">Certificate procurement should have started during P1 &mdash; lead time, not build time, is the constraint.</p>
+            <ul>
+              <li>MSIX package with bundled Node runtime and a startup task.</li>
+              <li>Authenticode signing on an HSM-backed certificate; sign the beta too, so SmartScreen reputation starts accruing early.</li>
+              <li>Windows equivalents of <code>setup-meetron.sh</code> / <code>update-meetron.sh</code>, preserving the existing "detect the live install and update in place" behaviour.</li>
+              <li>Release pipeline mirroring <code>package-community-release.sh</code>, with checksum and signature verification.</li>
+            </ul>
+            <p class="exit"><b>Exit</b> &nbsp;A signed installer downloads and runs on a clean Windows 11 machine without a SmartScreen block, and updates in place without losing the Chrome profile or login state.</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-n">P5</div>
+          <div>
+            <h4>Own kernel audio driver &mdash; conditional</h4>
+            <p class="goal">Only if P3 proves the driverless bridge cannot carry Zoom Web or meets an unacceptable quality bar. Do not start speculatively.</p>
+            <ul>
+              <li>Partner Center hardware account, EV certificate, attestation signing pipeline.</li>
+              <li>ACX driver for Windows 11 exposing two loopback endpoints; PortCls fallback if Windows 10 must be supported.</li>
+              <li>The 149-line ring buffer is conceptually reusable but must be rewritten against <code>Interlocked*</code> for kernel mode.</li>
+              <li>MSI wrapper with <code>pnputil</code> driver install; Driver Verifier and HVCI validation.</li>
+            </ul>
+            <p class="exit"><b>Exit</b> &nbsp;Attestation-signed driver installs without a reboot and presents both endpoints. Treat this phase as a funded project, not a sprint.</p>
+          </div>
+        </div>
+      </div>
+
+      <p>The dependency that matters: <strong>P0 gates everything</strong>, and it is entirely macOS work. It is also the phase most likely to be skipped under schedule pressure &mdash; and skipping it produces a forked codebase where every future feature is written twice.</p>
+    </section>
+
+    <!-- ==================== 9 ==================== -->
+    <section id="risks">
+      <div class="sec-head"><span class="sec-num">09</span><h2>Risks worth naming now</h2></div>
+
+      <div class="scroller wide">
+        <table>
+          <thead><tr><th class="cap-w">Risk</th><th>Why it bites</th><th>Mitigation</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Zoom Web resists the driverless bridge</strong><br><span class="chip chip-bad">High impact</span></td>
+              <td>Zoom is already the fussiest provider &mdash; <code>prepare-zoom.mjs</code> is 729 lines of workarounds, and the code comments note it bypasses <code>setSinkId</code> hooks on reinitialise. Its WASM audio path may not use standard <code>getUserMedia</code> at all.</td>
+              <td>Spike Zoom <em>first</em>, on macOS, during P0. It is the cheapest way to learn whether Option&nbsp;B is viable, and it decides whether P5 is on the roadmap.</td>
+            </tr>
+            <tr>
+              <td><strong>Silent loss of file permissions</strong><br><span class="chip chip-warn">Security</span></td>
+              <td>Node accepts <code>{mode: 0o600}</code> on Windows and ignores it. The <code>.env</code> holds the ChatGPT project URL and runtime state; nothing will fail, and nothing will warn.</td>
+              <td>Make <code>secureFile()</code> mandatory in P1 and add a test that asserts the resulting ACL, not just that the write succeeded.</td>
+            </tr>
+            <tr>
+              <td><strong>Orphaned Chrome processes</strong><br><span class="chip chip-warn">Reliability</span></td>
+              <td>The macOS cancel path relies on process-group signals. A naive Windows port using <code>taskkill /PID</code> without <code>/T</code> leaves the Chrome tree running and the CDP port occupied &mdash; and the next launch then fails its ownership check.</td>
+              <td>Job Object with <code>KILL_ON_JOB_CLOSE</code> from the start. Test the host-crash path explicitly, not just the clean-stop path.</td>
+            </tr>
+            <tr>
+              <td><strong>Antivirus and SmartScreen false positives</strong><br><span class="chip chip-warn">Distribution</span></td>
+              <td>A Native Messaging host that spawns detached processes, opens a local debug port and injects scripts into pages is a textbook heuristic match. Unsigned, it will be quarantined on some machines.</td>
+              <td>Sign from the first beta. Submit to Microsoft for false-positive review early. Budget for it &mdash; it is not a one-off.</td>
+            </tr>
+            <tr>
+              <td><strong>Path handling</strong><br><span class="chip chip-good">Low</span></td>
+              <td>Profile paths under <code>%LOCALAPPDATA%</code> contain spaces, and the current process match does substring comparison on <code>--user-data-dir=&hellip; --no-first-run</code>. Deep Chrome profile trees can also hit <code>MAX_PATH</code>.</td>
+              <td>Quoting-aware command-line parsing; keep the profile directory shallow; enable long paths in the installer.</td>
+            </tr>
+            <tr>
+              <td><strong>Bash port regressions</strong><br><span class="chip chip-warn">Medium</span></td>
+              <td>3,082 lines of shell encode real behaviour &mdash; exit-code contracts, in-place update detection, backend auto-detection. <code>tests/scripts-test.sh</code> covers some of it, and it too is bash.</td>
+              <td>Port the tests to Node alongside the scripts, one script at a time, keeping both implementations alive until the Node one passes the existing test.</td>
+            </tr>
+            <tr>
+              <td><strong>Third-party cable licensing</strong><br><span class="chip chip-warn">Legal</span></td>
+              <td>VB-CABLE is donationware; bundling or redistributing it needs a licence agreement. Meetron is GPL-3.0, which constrains what can be shipped alongside it.</td>
+              <td>Detect and instruct rather than bundle, mirroring how BlackHole is handled today. Get the licence question answered before P1 ships publicly.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ==================== 10 ==================== -->
+    <section id="decide">
+      <div class="sec-head"><span class="sec-num">10</span><h2>Decisions needed before Phase&nbsp;1</h2></div>
+
+      <p>Four questions I cannot answer from the codebase. Each one changes the plan materially.</p>
+
+      <div class="decisions">
+        <div class="decision">
+          <h4>Is there a legal entity that can hold a Partner Center hardware account and an EV certificate?</h4>
+          <p>If not, Option&nbsp;A is off the table entirely and Option&nbsp;B stops being the preferred path and becomes the only one. This changes P3 from "strategic improvement" to "critical path" and should be scheduled accordingly.</p>
+        </div>
+        <div class="decision">
+          <h4>Is a third-party driver dependency acceptable for the Windows beta?</h4>
+          <p>The BlackHole precedent says yes, and it is what makes a Windows build possible in weeks rather than quarters. But it is a visibly worse first-run experience than the current macOS <code>.pkg</code>, and it needs a licensing answer.</p>
+        </div>
+        <div class="decision">
+          <h4>WinUI 3 with a C# toolchain, or Tauri/WebView2 staying in JavaScript?</h4>
+          <p>WinUI 3 is more authentically native and gives toast identity and Mica for free; Tauri keeps one language across the project. This decides P2's shape and who can work on it.</p>
+        </div>
+        <div class="decision">
+          <h4>Does Windows ship in the OSS Community edition, or only in a commercial build?</h4>
+          <p>The README currently lists a Windows version alongside notarized apps and auto-update as explicitly out of scope for the OSS release. If that stays true, the platform adapter still belongs in this repo &mdash; but the installer, shell and signing pipeline live elsewhere, and P0 should be designed to keep that split clean.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p>Audit performed against bb8ad8/meetron at commit 8721658, version 0.10.1, on 31 August 2026. Line counts measured across the working tree excluding <code>.git</code> and <code>node_modules</code>. All file and line references were verified in-repo at audit time. Windows API recommendations reflect Windows 11 as of mid-2026; verify Partner Center and certificate-authority requirements at the time of procurement, as those change independently of the platform.</p>
+    </footer>
+
+  </div>
+</div>
