@@ -96,7 +96,7 @@ try {
   assert.match(ciWorkflow, /creating disposable certificate/);
   assert.match(ciWorkflow, /Wait-Job \$certificateJob -Timeout 30/);
   assert.match(ciWorkflow, /X509Store/);
-  assert.match(ciWorkflow, /'TrustedPeople'.*StoreLocation\]::CurrentUser/s);
+  assert.match(ciWorkflow, /'TrustedPeople'.*StoreLocation\]::LocalMachine/s);
   assert.match(ciWorkflow, /OpenFlags\]::ReadWrite/);
   assert.match(ciWorkflow, /FindByThumbprint/);
   assert.match(ciWorkflow, /\$cleanupStore\.Remove\(\$cleanupCertificate\)/);

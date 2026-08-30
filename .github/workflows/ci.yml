@@ -101,7 +101,7 @@ jobs:
           $testCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
             $certificatePath)
           $trustedPeople = [System.Security.Cryptography.X509Certificates.X509Store]::new(
-            'TrustedPeople', [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+            'TrustedPeople', [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
           try {
             $trustedPeople.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
             $trustedPeople.Add($testCertificate)
@@ -193,9 +193,21 @@ jobs:
           $thumbprintPath = 'dist/windows/Meetron-Local-Test.thumbprint'
           if (Test-Path -LiteralPath $thumbprintPath) {
             $thumbprint = (Get-Content -Raw -LiteralPath $thumbprintPath).Trim()
-            foreach ($storeName in @('My', 'TrustedPeople')) {
+            $cleanupStores = @(
+              [pscustomobject]@{
+                Name = 'My'
+                Location = [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+              }
+              [pscustomobject]@{
+                Name = 'TrustedPeople'
+                Location = [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine
+              }
+            )
+            foreach ($store in $cleanupStores) {
+              $storeName = $store.Name
+              $storeLocation = $store.Location
               $cleanupStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
-                $storeName, [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+                $storeName, $storeLocation)
               try {
                 $cleanupStore.Open(
                   [System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)

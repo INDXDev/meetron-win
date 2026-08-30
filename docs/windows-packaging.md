@@ -52,7 +52,8 @@ unsigned MSIX is useful for deterministic layout, manifest, checksum, bundled
 runtime, and Phase 3 contract tests, but Windows will not install it normally.
 CI additionally signs that artifact with a disposable, non-exportable
 `CN=Meetron Local Test` certificate and places only its public certificate in
-the ephemeral runner's Current User `TrustedPeople` store. Separate bounded CI
+the ephemeral admin runner's Local Machine `TrustedPeople` store, as required
+for MSIX deployment trust. Separate bounded CI
 steps create the certificate, sign and verify the launch-critical inner files,
 sign and checksum the outer package, install/update it, and always clean up the
 exact certificate thumbprint and package. The local verifier requires intact
