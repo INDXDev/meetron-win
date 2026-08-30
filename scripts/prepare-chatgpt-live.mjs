@@ -2,6 +2,10 @@
 
 import { getAudioStatus } from "./audio-backend.mjs";
 import { connectToChromeOverCDP } from "./playwright-cdp.mjs";
+import {
+  installWebRtcLoopbackPage,
+  WEBRTC_LOOPBACK_BACKEND_ID,
+} from "../src/audio/webrtc-loopback-page.mjs";
 
 const args = process.argv.slice(2);
 const options = {
@@ -59,8 +63,9 @@ if (!/^https:\/\/chatgpt\.com\/g\/g-p-[^/]+\/project(?:[/?#]|$)/.test(options.pr
   process.exit(2);
 }
 
+const audio = await getAudioStatus();
+const driverless = audio.backend === WEBRTC_LOOPBACK_BACKEND_ID;
 if (!options.inputDevice || !options.outputDevice) {
-  const audio = await getAudioStatus();
   if (!options.inputDevice) {
     options.inputDevice = audio.routing.chatgptInput.name;
     options.inputDeviceUID = audio.routing.chatgptInput.uid;
@@ -82,19 +87,27 @@ await context.grantPermissions(["microphone"], {
   origin: "https://chatgpt.com",
 });
 
+if (driverless) {
+  await context.addInitScript(installWebRtcLoopbackPage, { role: "chatgpt" });
+}
+
 const existingChatgptPages = context
   .pages()
   .filter((candidate) => candidate.url().startsWith("https://chatgpt.com/"));
 
-let routingProbe = existingChatgptPages[0];
+let routingProbe;
 let temporaryProbe = false;
-if (!routingProbe) {
+let inputDevice = { deviceId: "", label: options.inputDevice };
+let outputDevice = { deviceId: "", label: options.outputDevice };
+if (!driverless) {
+  routingProbe = existingChatgptPages[0];
+  if (!routingProbe) {
   routingProbe = await context.newPage();
   temporaryProbe = true;
   await routingProbe.goto(options.projectUrl, { waitUntil: "domcontentloaded" });
-} else {
-  await routingProbe.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => {});
-}
+  } else {
+    await routingProbe.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => {});
+  }
 
 const routingDevices = await routingProbe.evaluate(async ({ inputName, outputName }) => {
   const devices = await navigator.mediaDevices.enumerateDevices();
@@ -111,8 +124,8 @@ const routingDevices = await routingProbe.evaluate(async ({ inputName, outputNam
   };
 }, { inputName: options.inputDevice, outputName: options.outputDevice });
 
-const inputDevice = routingDevices.input;
-const outputDevice = routingDevices.output;
+  inputDevice = routingDevices.input;
+  outputDevice = routingDevices.output;
 
 if (!inputDevice) {
   throw new Error(`ChatGPT Voice input device was not found: ${options.inputDevice}`);
@@ -352,6 +365,7 @@ await context.addInitScript(({ inputDeviceId, inputLabel, sinkId, outputLabel })
   sinkId: outputDevice.deviceId,
   outputLabel: outputDevice.label,
 });
+}
 
 if (temporaryProbe) {
   await routingProbe.close();
@@ -436,6 +450,52 @@ try {
   });
 
   await page.waitForTimeout(750);
+  if (driverless) {
+    await page.waitForFunction(() => {
+      const state = globalThis.__meetronWebRtcLoopback;
+      return state?.inputRequests > 0 && state.inputTracks.length > 0;
+    }, undefined, { timeout: 5_000 });
+    const loopback = await page.evaluate(() => {
+      const state = globalThis.__meetronWebRtcLoopback;
+      if (!state) return null;
+      return {
+        backend: state.backend,
+        role: state.role,
+        connectionState: state.connectionState,
+        inputRequests: state.inputRequests,
+        inputTracks: state.inputTracks,
+        outputSources: state.outputSources,
+        outputContexts: state.outputContexts,
+        failures: state.failures,
+        processing: state.processing,
+      };
+    });
+    if (!loopback || loopback.failures.length > 0) {
+      throw new Error(
+        `ChatGPT WebRTC loopback initialization failed: ${loopback?.failures.map((failure) => failure.message).join(" / ") || "missing state"}`,
+      );
+    }
+    audioInput = {
+      routed: loopback.inputRequests > 0 && loopback.inputTracks.length > 0,
+      backend: loopback.backend,
+      inputRequests: loopback.inputRequests,
+      tracks: loopback.inputTracks,
+      processing: loopback.processing,
+    };
+    audioOutput = {
+      routed: true,
+      backend: loopback.backend,
+      connectionState: loopback.connectionState,
+      mediaElements: loopback.outputSources,
+      audioContexts: loopback.outputContexts,
+      failures: [],
+    };
+    internalAudioOutput = {
+      checked: false,
+      reason: "WebRTC loopback does not create an OS audio output controller.",
+      unexpectedOutputs: [],
+    };
+  } else {
   await page.waitForFunction(() => {
     const state = globalThis.__meetingCopilotAudioRouting;
     return state?.inputRequests > 0 && state.inputTracks.length > 0;
@@ -510,6 +570,7 @@ try {
     throw new Error(
       `Chrome detected active ChatGPT audio outside ${outputDevice.label}: ${devices}`,
     );
+  }
   }
 } catch (error) {
   if (voiceStartAttempted && !page.isClosed()) {

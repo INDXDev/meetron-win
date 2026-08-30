@@ -82,6 +82,8 @@ VB-CABLE A+Bは次の4エンドポイントを使います。
 
 Google Meetでは、機密情報を含まないテスト会議で参加、双方向音声、画面送信、トレイ状態、通知、ホットキー、セッション終了後のChromeプロセス消去を確認してください。Zoom WebはGoogle Meetと同一の結果を仮定せず、別に検証してください。ドライバ不要の音声経路はPhase 3、署名済みパッケージはPhase 4の範囲です。
 
+Phase 3のドライバ不要WebRTC経路は、`MEETING_COPILOT_AUDIO_BACKEND=webrtc-loopback`を明示した場合だけ有効になる実験機能です。拡張のService Workerをローカルなシグナリング専用に使い、ChatGPTタブとMeet／Zoomタブの間で音声を直接転送します。音声サンプルはService WorkerやNative Messaging Hostを通りません。`auto`は品質確認が完了するまで既存のVB-CABLE経路を選び、既存のデバイス設定も変更しません。試す場合は両方のChromeプロファイルで拡張を再読み込みし、Google MeetとZoom Webを別々に確認してください。測定手順、合格基準、現時点の制約は[ドライバ不要音声の検証手順](docs/driverless-audio-validation.md)にあります。
+
 ## Meetron Setup.commandが行うこと
 
 GitHubからcloneした後は、Finderでリポジトリを開き、`Meetron Setup.command`をダブルクリックします。ターミナルを利用する場合は`node src/cli/setup-meetron.mjs`を実行できます。セットアップは現在の状態を判定し、次に必要な操作だけを表示します。

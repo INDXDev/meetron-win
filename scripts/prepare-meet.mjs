@@ -14,6 +14,10 @@ import {
   resolveMeetingAudioDevices,
 } from "../src/audio/meeting-audio-devices.mjs";
 import {
+  installWebRtcLoopbackPage,
+  WEBRTC_LOOPBACK_BACKEND_ID,
+} from "../src/audio/webrtc-loopback-page.mjs";
+import {
   parsePreparationOptions,
   PREPARATION_EXIT_CODES,
   preparationUsage,
@@ -44,10 +48,20 @@ if (!options.url.startsWith("https://meet.google.com/")) {
   process.exit(2);
 }
 
-Object.assign(options, await resolveMeetingAudioDevices(options, getAudioStatus));
+const audio = await getAudioStatus();
+const driverless = audio.backend === WEBRTC_LOOPBACK_BACKEND_ID;
+if (driverless) {
+  options.microphoneDevice ||= audio.routing.meetingMicrophone.name;
+  options.speakerDevice ||= audio.routing.meetingSpeaker.name;
+} else {
+  Object.assign(options, await resolveMeetingAudioDevices(options, async () => audio));
+}
 
 const browser = await connectToChromeOverCDP(options.cdp);
 const context = await firstBrowserContext(browser);
+if (driverless) {
+  await context.addInitScript(installWebRtcLoopbackPage, { role: "meeting" });
+}
 await context.grantPermissions(["microphone"], {
   origin: "https://meet.google.com",
 });
@@ -68,6 +82,8 @@ await closeOtherPages(meetPages, page);
 if (!page) {
   page = await context.newPage();
   await page.goto(options.url, { waitUntil: "domcontentloaded" });
+} else if (driverless) {
+  await page.reload({ waitUntil: "domcontentloaded" });
 }
 
 await page.bringToFront();
@@ -135,17 +151,21 @@ async function selectAudioDevice({ buttonName, menuName, targetName }) {
   return currentLabel;
 }
 
-const microphoneDevice = await selectAudioDevice({
-  buttonName: /^(マイク|Microphone):/i,
-  menuName: /マイク|Microphone/i,
-  targetName: exactDevicePattern(options.microphoneDevice),
-});
+const microphoneDevice = driverless
+  ? options.microphoneDevice
+  : await selectAudioDevice({
+    buttonName: /^(マイク|Microphone):/i,
+    menuName: /マイク|Microphone/i,
+    targetName: exactDevicePattern(options.microphoneDevice),
+  });
 
-const speakerDevice = await selectAudioDevice({
-  buttonName: /^(スピーカー|Speaker):/i,
-  menuName: /スピーカー|Speaker/i,
-  targetName: exactDevicePattern(options.speakerDevice),
-});
+const speakerDevice = driverless
+  ? options.speakerDevice
+  : await selectAudioDevice({
+    buttonName: /^(スピーカー|Speaker):/i,
+    menuName: /スピーカー|Speaker/i,
+    targetName: exactDevicePattern(options.speakerDevice),
+  });
 
 const nameFilled = await fillParticipantName();
 
@@ -206,10 +226,41 @@ const speakerButton = page.getByRole("button", {
   name: /^(スピーカー|Speaker):/i,
 });
 
-const resolvedMicrophoneDevice =
-  (await microphoneButton.getAttribute("aria-label")) || microphoneDevice;
-const resolvedSpeakerDevice =
-  (await speakerButton.getAttribute("aria-label")) || speakerDevice;
+const resolvedMicrophoneDevice = driverless
+  ? microphoneDevice
+  : (await microphoneButton.getAttribute("aria-label")) || microphoneDevice;
+const resolvedSpeakerDevice = driverless
+  ? speakerDevice
+  : (await speakerButton.getAttribute("aria-label")) || speakerDevice;
+
+if (driverless) {
+  await page.waitForFunction(() =>
+    globalThis.__meetronWebRtcLoopback?.peerReadyMessages > 0,
+  undefined, { timeout: 5_000 }).catch((cause) => {
+    throw new Error(
+      "Meet WebRTC loopback did not pair with the ChatGPT tab through the extension.",
+      { cause },
+    );
+  });
+}
+const loopback = driverless
+  ? await page.evaluate(() => {
+    const state = globalThis.__meetronWebRtcLoopback;
+    return state && {
+      backend: state.backend,
+      role: state.role,
+      connectionState: state.connectionState,
+      peerReadyMessages: state.peerReadyMessages,
+      failures: state.failures,
+      processing: state.processing,
+    };
+  })
+  : null;
+if (driverless && (!loopback || loopback.failures.length > 0)) {
+  throw new Error(
+    `Meet WebRTC loopback initialization failed: ${loopback?.failures.map((failure) => failure.message).join(" / ") || "missing state"}`,
+  );
+}
 
 let connection = "prejoin";
 let actionRequired = null;
@@ -329,6 +380,7 @@ const result = createPreparationResult({
   cameraState,
   microphoneDevice: resolvedMicrophoneDevice,
   speakerDevice: resolvedSpeakerDevice,
+  audioRouting: loopback || { backend: audio.backend },
   actionRequired,
   joinStatus: legacyJoinStatus,
   title: await page.title(),

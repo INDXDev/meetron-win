@@ -1,16 +1,26 @@
 #!/usr/bin/env node
 
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import net from "node:net";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connectToChromeOverCDP } from "../scripts/playwright-cdp.mjs";
-import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
-const { run: execFileAsync, spawn } = macosPlatformAdapter.process;
+const platform = getPlatformAdapter();
+const { run: execFileAsync, spawn } = platform.process;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const executablePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const driverless = process.env.MEETING_COPILOT_AUDIO_BACKEND === "webrtc-loopback";
+const chromeApplication = platform.chrome
+  .applications({ home: process.env.HOME || homedir(), env: process.env })
+  .find((candidate) => existsSync(candidate));
+if (!chromeApplication) {
+  process.stdout.write("Meet preparation test skipped: Google Chrome was not found.\n");
+  process.exit(0);
+}
+const executablePath = platform.chrome.executable(chromeApplication);
 const profileDir = await mkdtemp(resolve(tmpdir(), "meeting-copilot-prepare-meet-"));
 
 const port = await new Promise((resolvePort, reject) => {
@@ -50,6 +60,30 @@ try {
 
   browser = await connectToChromeOverCDP(`http://127.0.0.1:${port}`);
   const context = browser.contexts()[0];
+  if (driverless) {
+    await context.addInitScript(() => {
+      const channel = "meetron-webrtc-loopback";
+      window.addEventListener("message", (event) => {
+        if (
+          event.source === window &&
+          event.data?.channel === channel &&
+          event.data?.direction === "page-to-extension" &&
+          event.data?.type === "register"
+        ) {
+          window.postMessage({
+            channel,
+            direction: "extension-to-page",
+            type: "peer-ready",
+          }, location.origin);
+        }
+      });
+      queueMicrotask(() => window.postMessage({
+        channel,
+        direction: "extension-to-page",
+        type: "bridge-ready",
+      }, location.origin));
+    });
+  }
   await context.route("https://meet.google.com/**", (route) => {
     const url = new URL(route.request().url());
     const cameraOn = url.searchParams.has("camera-on");
@@ -150,6 +184,10 @@ try {
   if (
     unavailableCamera.cameraDisabled !== true ||
     unavailableCamera.cameraState !== "unavailable" ||
+    (driverless && (
+      unavailableCamera.audioRouting?.backend !== "webrtc-loopback" ||
+      unavailableCamera.audioRouting?.peerReadyMessages < 1
+    )) ||
     enabledCamera.cameraDisabled !== true ||
     enabledCamera.cameraState !== "off" ||
     unknownCamera.cameraDisabled !== false ||
@@ -180,4 +218,4 @@ try {
   await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
-process.stdout.write("Meet camera and same-account admission states passed.\n");
+process.stdout.write(`Meet camera, same-account admission, and ${driverless ? "driverless" : "device"} routing passed.\n`);

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let messageListener;
+let connectListener;
 let nativeMessageListener;
 let nativeConnections = 0;
 
@@ -29,10 +30,26 @@ const chrome = {
         messageListener = listener;
       },
     },
+    onConnect: {
+      addListener: (listener) => {
+        connectListener = listener;
+      },
+    },
   },
 };
 
 const source = await readFile(resolve(repoRoot, "extension/service-worker.js"), "utf8");
+const manifest = JSON.parse(await readFile(resolve(repoRoot, "extension/manifest.json"), "utf8"));
+const audioBridgeRegistration = manifest.content_scripts.find((entry) =>
+  entry.js.includes("audio-bridge-content-script.js"));
+if (
+  !manifest.host_permissions.includes("https://chatgpt.com/*") ||
+  audioBridgeRegistration?.run_at !== "document_start" ||
+  !audioBridgeRegistration.matches.includes("https://meet.google.com/*") ||
+  !audioBridgeRegistration.matches.includes("https://*.zoom.us/*")
+) {
+  throw new Error("The extension does not load the audio bridge early on every loopback peer.");
+}
 vm.runInNewContext(source, { chrome, URL, Error, Map, Set, Promise, setTimeout, clearTimeout });
 
 function request(type, sender) {
@@ -150,4 +167,61 @@ if (reconcileAsynchronous !== true || reconcileResponse?.ok !== true) {
   throw new Error("Service worker rejected the dedicated Zoom reconciliation request.");
 }
 
-process.stdout.write("Service worker sender authorization passed.\n");
+function audioPort(name, url) {
+  let messageHandler;
+  let disconnectHandler;
+  return {
+    name,
+    sender: { id: chrome.runtime.id, url },
+    posted: [],
+    disconnected: false,
+    onMessage: { addListener: (listener) => { messageHandler = listener; } },
+    onDisconnect: { addListener: (listener) => { disconnectHandler = listener; } },
+    postMessage(message) { this.posted.push(message); },
+    disconnect() { this.disconnected = true; disconnectHandler?.(); },
+    receive(message) { messageHandler?.(message); },
+  };
+}
+
+const spoofed = audioPort("meetron-audio-loopback", "https://meet.google.com/abc-defg-hij");
+connectListener(spoofed);
+spoofed.receive({ type: "register", role: "chatgpt" });
+if (!spoofed.disconnected) {
+  throw new Error("Service worker accepted a meeting page as the ChatGPT audio peer.");
+}
+const offMeeting = audioPort("meetron-audio-loopback", "https://meet.google.com/landing");
+connectListener(offMeeting);
+offMeeting.receive({ type: "register", role: "meeting" });
+if (!offMeeting.disconnected) {
+  throw new Error("Service worker accepted an unrelated Meet page as an audio peer.");
+}
+
+const chatgptPeer = audioPort("meetron-audio-loopback", "https://chatgpt.com/g/g-p-test/project");
+const meetingPeer = audioPort("meetron-audio-loopback", "https://app.zoom.us/wc/12345678901/join");
+connectListener(chatgptPeer);
+connectListener(meetingPeer);
+chatgptPeer.receive({ type: "register", role: "chatgpt" });
+meetingPeer.receive({ type: "register", role: "meeting" });
+if (
+  chatgptPeer.posted.at(-1)?.type !== "peer-ready" ||
+  meetingPeer.posted.at(-1)?.type !== "peer-ready"
+) {
+  throw new Error("Service worker did not pair the two authorized audio roles.");
+}
+
+const description = { type: "offer", sdp: "fixture" };
+chatgptPeer.receive({ type: "signal", description });
+if (meetingPeer.posted.at(-1)?.description !== description) {
+  throw new Error("Service worker did not relay WebRTC signaling to the counterpart.");
+}
+const relayedCount = meetingPeer.posted.length;
+chatgptPeer.receive({ type: "signal", description: { type: "rollback", sdp: "" } });
+if (meetingPeer.posted.length !== relayedCount) {
+  throw new Error("Service worker relayed a malformed WebRTC description.");
+}
+meetingPeer.disconnect();
+if (chatgptPeer.posted.at(-1)?.type !== "peer-disconnected") {
+  throw new Error("Service worker did not report an audio peer disconnect.");
+}
+
+process.stdout.write("Service worker authorization and audio signaling passed.\n");

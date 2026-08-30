@@ -2,6 +2,12 @@
 
 Meetron runs locally, but the audio bridge sends meeting audio to ChatGPT Web Voice and sends ChatGPT Voice output into the selected meeting. When the user presses the screenshot button in Google Meet or Zoom, the currently visible dedicated meeting viewport is also sent to the active ChatGPT conversation. Those services process audio and images under the user's account settings, terms, and privacy policies.
 
+When the experimental Windows driverless backend is selected, the extension
+Service Worker relays only WebRTC session descriptions and ICE candidates between
+the dedicated ChatGPT and meeting tabs. Audio remains on the direct browser
+peer connection; it is not copied into extension storage, Native Messaging, or
+Meetron runtime files.
+
 ## Local data
 
 The project may store the following data on the Mac or Windows PC:

@@ -1,15 +1,25 @@
 #!/usr/bin/env node
 
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import net from "node:net";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connectToChromeOverCDP } from "../scripts/playwright-cdp.mjs";
-import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
-const { run: execFileAsync, spawn } = macosPlatformAdapter.process;
+const platform = getPlatformAdapter();
+const { run: execFileAsync, spawn } = platform.process;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const driverless = process.env.MEETING_COPILOT_AUDIO_BACKEND === "webrtc-loopback";
+const chromeApplication = platform.chrome
+  .applications({ home: process.env.HOME || homedir(), env: process.env })
+  .find((candidate) => existsSync(candidate));
+if (!chromeApplication) {
+  process.stdout.write("Zoom preparation test skipped: Google Chrome was not found.\n");
+  process.exit(0);
+}
 const profileDir = await mkdtemp(resolve(tmpdir(), "meetron-prepare-zoom-"));
 const port = await new Promise((resolvePort, reject) => {
   const server = net.createServer();
@@ -21,7 +31,7 @@ const port = await new Promise((resolvePort, reject) => {
 });
 
 const chrome = spawn(
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  platform.chrome.executable(chromeApplication),
   [
     "--headless=new",
     "--remote-debugging-address=127.0.0.1",
@@ -44,6 +54,30 @@ try {
   }
   browser = await connectToChromeOverCDP(`http://127.0.0.1:${port}`);
   const context = browser.contexts()[0];
+  if (driverless) {
+    await context.addInitScript(() => {
+      const channel = "meetron-webrtc-loopback";
+      window.addEventListener("message", (event) => {
+        if (
+          event.source === window &&
+          event.data?.channel === channel &&
+          event.data?.direction === "page-to-extension" &&
+          event.data?.type === "register"
+        ) {
+          window.postMessage({
+            channel,
+            direction: "extension-to-page",
+            type: "peer-ready",
+          }, location.origin);
+        }
+      });
+      queueMicrotask(() => window.postMessage({
+        channel,
+        direction: "extension-to-page",
+        type: "bridge-ready",
+      }, location.origin));
+    });
+  }
   await context.addInitScript(() => {
     const nativeEnumerate = navigator.mediaDevices?.enumerateDevices?.bind(navigator.mediaDevices);
     if (!nativeEnumerate) return;
@@ -78,7 +112,10 @@ try {
   let topLevelPromotionAttempts = 0;
   await context.route("https://us02web.zoom.us/**", async (route) => {
     invitationRequests += 1;
-    const parent = route.request().frame().parentFrame();
+    const requestFrame = route.request().isNavigationRequest()
+      ? (() => { try { return route.request().frame(); } catch { return null; } })()
+      : null;
+    const parent = requestFrame?.parentFrame();
     invitationSandbox = await parent
       ?.locator("#meetron-zoom-invitation")
       .getAttribute("sandbox") || "";
@@ -92,8 +129,10 @@ try {
     if (new URL(route.request().url()).searchParams.get("guarded") === "1") {
       guardedWebClientRequests += 1;
     }
-    const requestFrame = route.request().frame();
-    if (requestFrame === requestFrame.page().mainFrame()) {
+    const requestFrame = route.request().isNavigationRequest()
+      ? (() => { try { return route.request().frame(); } catch { return null; } })()
+      : null;
+    if (requestFrame && requestFrame === requestFrame.page().mainFrame()) {
       topLevelPromotionAttempts += 1;
       if (topLevelPromotionAttempts === 1) {
         return route.fulfill({
@@ -167,8 +206,20 @@ try {
       { cwd: repoRoot, timeout: 60_000 },
     ));
   } catch (error) {
+    const pageDiagnostics = await Promise.all(context.pages().map(async (candidate) => ({
+      url: candidate.url(),
+      routing: await candidate.evaluate(() => globalThis.__meetronZoomAudioRouting && {
+        inputRequests: globalThis.__meetronZoomAudioRouting.inputRequests,
+        outputAttempts: globalThis.__meetronZoomAudioRouting.outputAttempts,
+        failures: globalThis.__meetronZoomAudioRouting.failures,
+      }).catch(() => null),
+      loopback: await candidate.evaluate(() => globalThis.__meetronWebRtcLoopback && {
+        role: globalThis.__meetronWebRtcLoopback.role,
+        failures: globalThis.__meetronWebRtcLoopback.failures,
+      }).catch(() => null),
+    })));
     throw new Error(
-      `Zoom preparation command failed (invitation=${invitationRequests}, direct=${directWebClientRequests}, top=${topLevelPromotionAttempts}, guarded=${guardedWebClientRequests}): ${error.stderr || error.message}`,
+      `Zoom preparation command failed (invitation=${invitationRequests}, direct=${directWebClientRequests}, top=${topLevelPromotionAttempts}, guarded=${guardedWebClientRequests}, pages=${JSON.stringify(pageDiagnostics)}): ${error.stderr || error.message}`,
     );
   }
   const result = JSON.parse(stdout);
@@ -193,11 +244,20 @@ try {
     !result.cameraDisabled ||
     !result.zoomAudioDevices?.microphone?.configured ||
     !result.zoomAudioDevices?.speaker?.configured ||
-    result.zoomAudioDevices?.speaker?.selected !== false ||
-    result.zoomAudioDevices?.speaker?.requested !== true ||
-    result.audioRouting?.inputLabel !== "Meetron: AI to Meeting (Virtual)" ||
-    result.audioRouting?.outputLabel !== "Meetron: Meeting to AI (Virtual)" ||
-    result.audioRouting?.videoRequests < 1
+    (driverless
+      ? result.zoomAudioDevices?.microphone?.backend !== "webrtc-loopback" ||
+        result.zoomAudioDevices?.speaker?.backend !== "webrtc-loopback" ||
+        result.zoomAudioDevices?.speaker?.selected !== true ||
+        result.zoomAudioDevices?.speaker?.requested !== false ||
+        result.audioRouting?.backend !== "webrtc-loopback" ||
+        result.audioRouting?.peerReadyMessages < 1 ||
+        result.audioRouting?.inputLabel !== "Meetron WebRTC loopback" ||
+        result.audioRouting?.outputLabel !== "Meetron WebRTC loopback"
+      : result.zoomAudioDevices?.speaker?.selected !== false ||
+        result.zoomAudioDevices?.speaker?.requested !== true ||
+        result.audioRouting?.inputLabel !== "Meetron: AI to Meeting (Virtual)" ||
+        result.audioRouting?.outputLabel !== "Meetron: Meeting to AI (Virtual)") ||
+    (!driverless && result.audioRouting?.videoRequests < 1)
   ) {
     throw new Error(`Unexpected Zoom preparation result: ${stdout}`);
   }
@@ -214,4 +274,4 @@ try {
   await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
-process.stdout.write("Zoom mixed-language prejoin preparation and routing passed.\n");
+process.stdout.write(`Zoom mixed-language prejoin preparation and ${driverless ? "driverless" : "device"} routing passed.\n`);

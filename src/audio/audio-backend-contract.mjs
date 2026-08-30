@@ -35,6 +35,13 @@ export function defineAudioBackend(definition) {
       `Audio backend ${definition.id} requires a label`,
     );
   }
+  const transport = definition.transport || "device";
+  if (!["device", "webrtc-loopback"].includes(transport)) {
+    throw new MeetronError(
+      "INVALID_AUDIO_BACKEND",
+      `Audio backend ${definition.id} has an unsupported transport`,
+    );
+  }
   const meetingToAI = assertDeviceTarget(definition.meetingToAI, "meetingToAI", definition.id);
   const aiToMeeting = assertDeviceTarget(definition.aiToMeeting, "aiToMeeting", definition.id);
   const defaultRouting = {
@@ -52,6 +59,7 @@ export function defineAudioBackend(definition) {
   return Object.freeze({
     id: definition.id,
     label: definition.label,
+    transport,
     meetingToAI,
     aiToMeeting,
     routing: Object.freeze(routing),

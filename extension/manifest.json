@@ -9,6 +9,7 @@
     "storage"
   ],
   "host_permissions": [
+    "https://chatgpt.com/*",
     "https://meet.google.com/*",
     "https://*.zoom.us/*"
   ],
@@ -17,6 +18,17 @@
     "type": "module"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*"
+      ],
+      "js": [
+        "audio-bridge-content-script.js"
+      ],
+      "run_at": "document_start"
+    },
     {
       "matches": [
         "https://meet.google.com/*",

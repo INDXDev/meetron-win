@@ -35,6 +35,13 @@ Release package changes additionally require a development build with `npm run p
 
 The browser UI test uses the locally installed Google Chrome. Set `MEETING_COPILOT_SKIP_BROWSER_TEST=1` only when Chrome is unavailable; run the full test before proposing user-interface or automation changes.
 
+Driverless audio changes must keep the backend-contract, service-worker relay,
+page-hook, and browser-loopback tests green. Run the measurement procedure in
+[`docs/driverless-audio-validation.md`](docs/driverless-audio-validation.md) for
+Google Meet and Zoom Web independently. A silent Windows Chrome automation control
+is an automation limitation, not provider quality evidence; record RTP evidence
+and complete the documented real-browser listening run instead.
+
 The one-click updater deliberately updates the existing checkout path so both Chrome profiles keep their unpacked-extension registration. It must preserve `.git`, `.meeting-copilot.env`, `.meeting-copilot-runtime`, and dedicated profile data; abort on tracked Git changes; and keep a working BlackHole or legacy custom backend instead of forcing the Meetron Audio PKG. Add migration coverage to `tests/updater-test.mjs` for every updater behavior change.
 
 ## Architecture and meeting providers

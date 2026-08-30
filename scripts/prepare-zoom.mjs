@@ -20,6 +20,10 @@ import {
 } from "../src/browser/meeting-browser.mjs";
 import { resolveMeetingAudioDevices } from "../src/audio/meeting-audio-devices.mjs";
 import {
+  installWebRtcLoopbackPage,
+  WEBRTC_LOOPBACK_BACKEND_ID,
+} from "../src/audio/webrtc-loopback-page.mjs";
+import {
   parsePreparationOptions,
   PREPARATION_EXIT_CODES,
   preparationUsage,
@@ -52,7 +56,14 @@ try {
   process.exit(2);
 }
 
-Object.assign(options, await resolveMeetingAudioDevices(options, getAudioStatus));
+const audio = await getAudioStatus();
+const driverless = audio.backend === WEBRTC_LOOPBACK_BACKEND_ID;
+if (driverless) {
+  options.microphoneDevice ||= audio.routing.meetingMicrophone.name;
+  options.speakerDevice ||= audio.routing.meetingSpeaker.name;
+} else {
+  Object.assign(options, await resolveMeetingAudioDevices(options, async () => audio));
+}
 
 const browser = await connectToChromeOverCDP(options.cdp);
 const context = await firstBrowserContext(browser);
@@ -68,6 +79,9 @@ let page = [...context.pages()].reverse().find((candidate) => candidate.url() ==
   || await context.newPage();
 await closeOtherPages(existingZoomPages, page);
 
+if (driverless) {
+  await context.addInitScript(installWebRtcLoopbackPage, { role: "meeting" });
+} else {
 await context.addInitScript(({ inputDeviceId, inputLabel, outputDeviceId, outputLabel }) => {
   if (!(location.hostname === "zoom.us" || location.hostname.endsWith(".zoom.us"))) return;
   const markDedicatedParticipant = () => {
@@ -191,6 +205,7 @@ await context.addInitScript(({ inputDeviceId, inputLabel, outputDeviceId, output
   outputDeviceId: "",
   outputLabel: options.speakerDevice,
 });
+}
 
 await page.bringToFront();
 page.setDefaultTimeout(5_000);
@@ -350,8 +365,26 @@ for (let attempt = 0; attempt < 2; attempt += 1) {
   await page.waitForTimeout(300);
 }
 
+await page.waitForFunction((driverlessBackend) => driverlessBackend
+  ? Boolean(globalThis.__meetronWebRtcLoopback)
+  : Boolean(globalThis.__meetronZoomAudioRouting), driverless, { timeout: 5_000 });
+if (driverless) {
+  await page.waitForFunction(() =>
+    globalThis.__meetronWebRtcLoopback?.peerReadyMessages > 0,
+  undefined, { timeout: 5_000 }).catch((cause) => {
+    throw new Error(
+      "Zoom WebRTC loopback did not pair with the ChatGPT tab through the extension.",
+      { cause },
+    );
+  });
+}
+
 const frame = page;
-const routingDevices = await frame.locator("body").evaluate(async (_body, { inputName, outputName }) => {
+const routingDevices = driverless ? {
+  input: { deviceId: "", label: options.microphoneDevice },
+  output: { deviceId: "", label: options.speakerDevice },
+  available: [],
+} : await frame.locator("body").evaluate(async (_body, { inputName, outputName }) => {
   const devices = await navigator.mediaDevices.enumerateDevices();
   const find = (kind, name) => devices.find((device) =>
     device.kind === kind && device.label.trim().toLowerCase().startsWith(name.trim().toLowerCase()));
@@ -383,7 +416,7 @@ if (!routingDevices.output) {
     `Zoom speaker device was not found: ${options.speakerDevice} (available: ${routingDevices.available.map(({ kind, label }) => `${kind}:${label}`).join(", ")})`,
   );
 }
-await frame.locator("body").evaluate((_body, { input, output }) => {
+if (!driverless) await frame.locator("body").evaluate((_body, { input, output }) => {
   const state = globalThis.__meetronZoomAudioRouting;
   if (!state) return;
   state.inputDeviceId = input.deviceId;
@@ -564,10 +597,14 @@ const cameraState = await ensureControlOff(
 // the safe preview state first, select the real Zoom UI devices (WebRTC output
 // bypasses setSinkId hooks), then verify muted state again after reinitializing.
 zoomAudioDevices = {
-  microphone: await selectZoomAudioDevice("microphone", options.microphoneDevice),
-  speaker: await selectZoomAudioDevice("speaker", options.speakerDevice),
+  microphone: driverless
+    ? { available: true, selected: true, configured: true, requested: false, backend: audio.backend }
+    : await selectZoomAudioDevice("microphone", options.microphoneDevice),
+  speaker: driverless
+    ? { available: true, selected: true, configured: true, requested: false, backend: audio.backend }
+    : await selectZoomAudioDevice("speaker", options.speakerDevice),
 };
-await page.waitForTimeout(2_500);
+await page.waitForTimeout(driverless ? 100 : 2_500);
 await ensureControlOff(
   "#preview-audio-control-button",
   /^(ミュート|Mute|Turn off microphone)$/i,
@@ -597,25 +634,40 @@ if (
 
 let connection = "prejoin";
 const waitingRoomPattern = /待機室|ホストがあなたの参加を許可|あなたが入室していることがホストに知らされました|ホストが参加しました|waiting room|host will let you in|host has been notified/i;
-const readRouting = () => frame.locator("body").evaluate(() => {
-  const state = globalThis.__meetronZoomAudioRouting;
-  return state ? {
-    inputLabel: state.inputLabel,
-    outputLabel: state.outputLabel,
-    inputRequests: state.inputRequests,
-    inputTracks: state.inputTracks,
-    videoRequests: state.videoRequests,
-    outputAttempts: state.outputAttempts,
-    outputSuccesses: state.outputSuccesses,
-    failures: state.failures,
-  } : null;
-});
+const readRouting = async () => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const result = await frame.locator("body").evaluate((_body, driverlessBackend) => {
+      const state = driverlessBackend
+        ? globalThis.__meetronWebRtcLoopback
+        : globalThis.__meetronZoomAudioRouting;
+      return state ? {
+        backend: state.backend || "device",
+        connectionState: state.connectionState,
+        processing: state.processing,
+        peerReadyMessages: state.peerReadyMessages,
+        inputLabel: state.inputLabel || "Meetron WebRTC loopback",
+        outputLabel: state.outputLabel || "Meetron WebRTC loopback",
+        inputRequests: state.inputRequests,
+        inputTracks: state.inputTracks,
+        videoRequests: state.videoRequests || 0,
+        outputAttempts: driverlessBackend ? state.outputSources + state.outputContexts : state.outputAttempts,
+        outputSuccesses: driverlessBackend ? state.outputSources + state.outputContexts : state.outputSuccesses,
+        failures: state.failures,
+      } : null;
+    }, driverless).catch(() => null);
+    if (result) return result;
+    await page.waitForTimeout(100);
+  }
+  return null;
+};
 
 let routing = await readRouting();
 const inputRouteFailed = routing?.inputRequests > 0 && routing.inputTracks.length === 0;
 const outputRouteFailed = routing?.outputAttempts > 0 && routing.outputSuccesses === 0;
 if (!routing || inputRouteFailed || outputRouteFailed) {
-  throw new Error(`Zoom audio input routing hook failed: ${routing?.failures?.join(", ") || "no Meetron input track"}`);
+  throw new Error(
+    `Zoom audio input routing hook failed: ${routing?.failures?.join(", ") || "no Meetron input track"} (${JSON.stringify({ page: page.url(), backend: routing?.backend, inputRequests: routing?.inputRequests, inputTrackCount: routing?.inputTracks?.length, outputAttempts: routing?.outputAttempts, outputSuccesses: routing?.outputSuccesses })})`,
+  );
 }
 
 if (options.join) {

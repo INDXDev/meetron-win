@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   AUDIO_BACKENDS,
   createAudioBackends,
+  configureAudio,
+  getAudioStatus,
   resolveDeviceTarget,
   routingForBackend,
   selectAudioBackend,
@@ -29,6 +31,24 @@ assert.equal(selectAudioBackend(blackHoleDevices, "auto").id, "blackhole");
 assert.equal(selectAudioBackend(vbCableDevices, "auto").id, "vb-cable");
 assert.equal(selectAudioBackend([], "vb-cable").id, "vb-cable");
 assert.equal(selectAudioBackend([], "custom").id, "custom");
+assert.equal(selectAudioBackend([], "webrtc-loopback").id, "webrtc-loopback");
+assert.equal(AUDIO_BACKENDS.webrtcLoopback.transport, "webrtc-loopback");
+assert.equal(selectAudioBackend([], "auto").id === "webrtc-loopback", false);
+const originalBackend = process.env.MEETING_COPILOT_AUDIO_BACKEND;
+process.env.MEETING_COPILOT_AUDIO_BACKEND = "webrtc-loopback";
+try {
+  const status = await getAudioStatus();
+  assert.equal(status.ready, true);
+  assert.equal(status.controller, "browser");
+  assert.deepEqual(status.requiredDeviceNames, []);
+  assert.equal(status.systemDefaultsUnchanged, true);
+  const configured = await configureAudio();
+  assert.equal(configured.backend, "webrtc-loopback");
+  assert.equal(configured.restorable, false);
+} finally {
+  if (originalBackend === undefined) delete process.env.MEETING_COPILOT_AUDIO_BACKEND;
+  else process.env.MEETING_COPILOT_AUDIO_BACKEND = originalBackend;
+}
 assert.equal(resolveDeviceTarget(customDevices, {
   name: AUDIO_BACKENDS.custom.meetingToAI.name,
   uid: "wrong.uid",
