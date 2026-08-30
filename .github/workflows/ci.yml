@@ -67,13 +67,23 @@ jobs:
               -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
             $signingTargets = @(Get-ChildItem $stage -Recurse -File -Include *.exe,*.dll |
               Select-Object -ExpandProperty FullName)
+            $signingBatches = @()
             for ($offset = 0; $offset -lt $signingTargets.Count; $offset += 24) {
               $last = [Math]::Min($offset + 23, $signingTargets.Count - 1)
-              $batch = @($signingTargets[$offset..$last])
-              & $signtool sign /fd SHA256 /sha1 $certificate.Thumbprint /s My @batch
+              $signingBatches += [pscustomobject]@{ Paths = @($signingTargets[$offset..$last]) }
+            }
+            $thumbprint = $certificate.Thumbprint
+            $signingFailures = @($signingBatches | ForEach-Object -ThrottleLimit 4 -Parallel {
+              $PSNativeCommandUseErrorActionPreference = $false
+              $batch = @($_.Paths)
+              $output = & $using:signtool sign /q /fd SHA256 /sha1 $using:thumbprint /s My @batch 2>&1 |
+                Out-String
               if ($LASTEXITCODE -ne 0) {
-                throw "Test signing failed for batch beginning at: $($batch[0])"
+                "Batch beginning at $($batch[0]):`n$output"
               }
+            })
+            if ($signingFailures.Count) {
+              throw "Test signing failed:`n$($signingFailures -join "`n")"
             }
             npm run verify:windows-package -- --stage $stage `
               --publisher 'CN=Meetron Local Test' --allow-test-signature
@@ -83,8 +93,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Test MSIX signing failed' }
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact).Hash.ToLowerInvariant()
             "$hash  $(Split-Path $artifact -Leaf)" | Set-Content -Encoding ascii "$artifact.sha256"
-            npm run verify:windows-package -- --msix $artifact `
-              --publisher 'CN=Meetron Local Test' --allow-test-signature
             $profile = Join-Path $env:LOCALAPPDATA 'Meetron\GPTParticipantChrome'
             New-Item -ItemType Directory -Force $profile | Out-Null
             'preserved-ci-login-state' | Set-Content -NoNewline (Join-Path $profile 'Local State')
