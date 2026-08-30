@@ -116,21 +116,23 @@ function assertPackageContracts(root, { release }) {
 async function signatureSubjects(paths) {
   const inputRoot = mkdtempSync(resolve(tmpdir(), "meetron-signatures-"));
   const inputPath = resolve(inputRoot, "paths.json");
+  const resultPath = resolve(inputRoot, "results.json");
   writeFileSync(inputPath, JSON.stringify(paths), "utf8");
   const command = [
     "$paths = Get-Content -Raw -LiteralPath $env:MEETRON_SIGNATURE_PATHS | ConvertFrom-Json",
     "$subjects = foreach ($path in $paths) { $signature = Get-AuthenticodeSignature -LiteralPath $path; $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($path)); [pscustomobject]@{ Path = [string]$path; Subject = [string]$certificate.Subject; Status = $signature.Status.ToString(); StatusMessage = [string]($signature.StatusMessage) } }",
-    "$subjects | ConvertTo-Json -Compress",
+    "$subjects | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:MEETRON_SIGNATURE_RESULT -Encoding utf8NoBOM",
   ].join("; ");
-  const shell = process.env.SystemRoot
-    ? resolve(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe")
-    : "powershell.exe";
   try {
-    const { stdout } = await run(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
-      env: { ...process.env, MEETRON_SIGNATURE_PATHS: inputPath },
+    await run("pwsh.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
+      env: {
+        ...process.env,
+        MEETRON_SIGNATURE_PATHS: inputPath,
+        MEETRON_SIGNATURE_RESULT: resultPath,
+      },
       timeout: 120_000,
     });
-    const parsed = JSON.parse(stdout.trim());
+    const parsed = JSON.parse(readFileSync(resultPath, "utf8").replace(/^\uFEFF/, ""));
     return Array.isArray(parsed) ? parsed : [parsed];
   } finally {
     rmSync(inputRoot, { recursive: true, force: true });

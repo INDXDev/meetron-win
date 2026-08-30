@@ -71,6 +71,9 @@ try {
   assert.match(verifyScript, /X509Certificate.*CreateFromSignedFile/);
   assert.match(verifyScript, /Get-AuthenticodeSignature/);
   assert.match(verifyScript, /Status\.ToString\(\)/);
+  assert.match(verifyScript, /MEETRON_SIGNATURE_RESULT/);
+  assert.match(verifyScript, /Set-Content.*utf8NoBOM/);
+  assert.match(verifyScript, /run\("pwsh\.exe"/);
   assert.match(verifyScript, /LOCAL-TEST Authenticode integrity is invalid/);
   assert.match(verifyScript, /verifyTestSignatures/);
   assert.match(verifyScript, /offset \+= 24/);
