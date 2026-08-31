@@ -44,8 +44,14 @@ jobs:
           $version = (Get-Content package.json | ConvertFrom-Json).version
           npm run package:windows:local -- --stage-only --stage-dir dist/windows/ci-stage --skip-build
           npm run package:windows:local -- --pack-stage dist/windows/ci-stage --output-dir dist/windows
-          npm run verify:windows-package -- --msix "dist/windows/Meetron-$version-windows-x64-LOCAL-TEST.msix" --allow-unsigned
-      - if: runner.os == 'Windows'
+          $artifact = "dist/windows/Meetron-$version-windows-x64-LOCAL-TEST.msix"
+          npm run package:windows:local -- --checksum $artifact
+          npm run verify:windows-package -- --msix $artifact --allow-unsigned
+      # This step writes machine-wide trust into LocalMachine\TrustedPeople and
+      # only cleans up on a best-effort basis. That is acceptable on a throwaway
+      # GitHub-hosted runner and not acceptable on a persistent self-hosted one,
+      # so the trust must never be granted outside a hosted runner.
+      - if: runner.os == 'Windows' && runner.environment == 'github-hosted'
         name: Create and trust disposable test certificate
         timeout-minutes: 2
         shell: pwsh
@@ -116,7 +122,7 @@ jobs:
             $trustedPeople.Close()
           }
           Write-Host "[phase4] disposable certificate trusted: $(Get-Date -Format o)"
-      - if: runner.os == 'Windows'
+      - if: runner.os == 'Windows' && runner.environment == 'github-hosted'
         name: Sign and verify local Windows staging tree
         timeout-minutes: 3
         shell: pwsh
@@ -143,7 +149,7 @@ jobs:
           npm run verify:windows-package -- --stage $stage `
             --publisher 'CN=Meetron Local Test' --allow-test-signature
           Write-Host "[phase4] signed staging tree verified: $(Get-Date -Format o)"
-      - if: runner.os == 'Windows'
+      - if: runner.os == 'Windows' && runner.environment == 'github-hosted'
         name: Pack, sign, and checksum local MSIX
         timeout-minutes: 3
         shell: pwsh
@@ -161,13 +167,16 @@ jobs:
           Write-Host "[phase4] signing local MSIX: $(Get-Date -Format o)"
           & $signtool sign /fd SHA256 /sha1 $env:MEETRON_TEST_CERT_THUMBPRINT /s My $artifact
           if ($LASTEXITCODE -ne 0) { throw 'Test MSIX signing failed' }
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact).Hash.ToLowerInvariant()
-          "$hash  $(Split-Path $artifact -Leaf)" | Set-Content -Encoding ascii "$artifact.sha256"
+          # The checksum has to describe the signed bytes, so it is produced by
+          # the same CLI step the release workflow uses, after signing.
+          npm run package:windows:local -- --checksum $artifact
           Write-Host "[phase4] signed MSIX checksummed: $(Get-Date -Format o)"
-      - if: runner.os == 'Windows'
+      - if: runner.os == 'Windows' && runner.environment == 'github-hosted'
         name: Install, update, and preserve Windows profile state
         timeout-minutes: 5
         shell: pwsh
+        env:
+          MEETRON_ALLOW_TEST_CERT: '1'
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true

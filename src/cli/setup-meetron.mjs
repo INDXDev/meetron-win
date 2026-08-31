@@ -9,6 +9,7 @@ import {
   cliError,
   platform,
   platformPaths,
+  powershellEnvironment,
   repoRoot,
   run,
   runMain,
@@ -115,7 +116,7 @@ runMain(async () => {
     const powershell = resolve(process.env.SystemRoot || process.env.WINDIR || "C:\\Windows", "System32/WindowsPowerShell/v1.0/powershell.exe");
     const build = await run(powershell, [
       "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "[Environment]::OSVersion.Version.Build",
-    ]).then(({ stdout }) => Number(stdout.trim()), () => 0);
+    ], { env: powershellEnvironment() }).then(({ stdout }) => Number(stdout.trim()), () => 0);
     if (build < 22_000) throw cliError(`[ERROR] Windows 11 is required (found OS build ${build || "unknown"}).`, 1);
     const audio = await getAudioStatus().catch(() => ({ backend: "", ready: false }));
     if (!audio.ready) {
@@ -139,7 +140,9 @@ runMain(async () => {
   try {
     await waitForChild(spawnNode(resolve(repoRoot, "src/cli/check-env.mjs")));
   } catch {
-    process.stderr.write("\nMeetron Audio may still be waiting for a macOS restart. Restart the Mac, then run setup again.\n");
+    process.stderr.write(platform.id === "win32"
+      ? "\nThe environment check failed. Review the reported items, then run setup again.\n"
+      : "\nMeetron Audio may still be waiting for a macOS restart. Restart the Mac, then run setup again.\n");
     return 21;
   }
   const extensionPath = platform.id === "win32" && process.env.MEETRON_PACKAGED === "1"

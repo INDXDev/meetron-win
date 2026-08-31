@@ -44,6 +44,7 @@ npm ci
 npm run build:windows
 npm run package:windows:local -- --stage-only --stage-dir dist/windows/local-stage --skip-build
 npm run package:windows:local -- --pack-stage dist/windows/local-stage --output-dir dist/windows
+npm run package:windows:local -- --checksum dist/windows/Meetron-0.10.1-windows-x64-LOCAL-TEST.msix
 npm run verify:windows-package -- --msix dist/windows/Meetron-0.10.1-windows-x64-LOCAL-TEST.msix --allow-unsigned
 ```
 
@@ -98,15 +99,37 @@ trust, package deployment, and state preservation. Release mode never
 accepts this reduced local-test scope: every staged EXE/DLL must carry the configured
 HSM-backed publisher signature and a trusted timestamp.
 
-Run signed betas through the same protected job. Betas use a tag-pinned
-`.appinstaller`; stable releases use the stable `releases/latest/download`
-descriptor so Windows can check for a higher version on launch. Signing a beta
-is necessary for early antivirus and SmartScreen feedback, but a valid
-signature does not create SmartScreen reputation by itself.
+Packing and signing are separate steps, so `--pack-stage` no longer writes a
+`.sha256`. The checksum is produced afterwards with
+`npm run package:windows -- --checksum PATH`, which guarantees the published
+hash describes the signed bytes rather than the pre-signature package.
+
+### Update channels
+
+Windows polls exactly the `Uri` recorded on the `<AppInstaller>` element of the
+installed descriptor, forever, so that address must stay mutable:
+
+- stable: `Meetron.appinstaller` published at
+  `https://github.com/OWNER/REPO/releases/latest/download/Meetron.appinstaller`;
+- beta: `Meetron-beta.appinstaller` published at the fixed, mutable `beta`
+  release tag, `https://github.com/OWNER/REPO/releases/download/beta/Meetron-beta.appinstaller`.
+
+The `beta` release holds only that descriptor; every beta build keeps its own
+version tag, and each beta run replaces the `beta` asset in place. The
+`<MainPackage>` `Uri` inside either feed stays pinned to the version's own tag.
+Both the generator and the verifier refuse a feed whose self-`Uri` is pinned to
+the same release tag as its MSIX, refuse a non-HTTPS or non-`github.com` URI,
+and refuse URIs that straddle two repositories, because such a feed can never
+publish another update -- including a security fix.
+
+Run signed betas through the same protected job. Signing a beta is necessary for
+early antivirus and SmartScreen feedback, but a valid signature does not create
+SmartScreen reputation by itself.
 
 ## Install and update
 
-Install the published `Meetron.appinstaller` with Windows App Installer. It
+Install the published descriptor for the channel you want -- `Meetron.appinstaller`
+for stable, `Meetron-beta.appinstaller` for beta -- with Windows App Installer. It
 verifies the signed MSIX and associates the installation with its update feed.
 Meetron refreshes Native Messaging registration whenever the shell launches,
 which replaces versioned WindowsApps paths after an update.

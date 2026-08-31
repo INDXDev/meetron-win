@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       beta:
-        description: Build a signed beta with a tag-pinned update descriptor
+        description: Publish through the mutable beta App Installer channel
         required: true
         default: true
         type: boolean
@@ -17,6 +17,12 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # Fixed, mutable GitHub release that carries nothing but the beta App Installer
+  # feed. Beta installations poll it forever, so its assets are replaced -- never
+  # re-tagged -- on each beta release.
+  BETA_CHANNEL_TAG: beta
 
 jobs:
   package-sign-verify:
@@ -79,20 +85,31 @@ jobs:
           INPUT_REF: ${{ inputs.release-ref }}
           EVENT_PRERELEASE: ${{ github.event.release.prerelease }}
           INPUT_BETA: ${{ inputs.beta }}
+          BETA_CHANNEL_TAG: ${{ env.BETA_CHANNEL_TAG }}
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
           $tag = if ($env:EVENT_TAG) { $env:EVENT_TAG } else { $env:INPUT_REF }
           $artifact = "Meetron-$version-windows-x64.msix"
-          $base = "https://github.com/${{ github.repository }}/releases"
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/releases"
           $packageUri = "$base/download/$tag/$artifact"
           $beta = $env:EVENT_PRERELEASE -eq 'true' -or $env:INPUT_BETA -eq 'true'
+          # App Installer polls exactly the URI baked into the installed package,
+          # forever. A beta feed published under its own release tag is immutable,
+          # so beta users could never receive another build -- including a security
+          # fix. Beta therefore publishes at the fixed, mutable 'beta' release tag
+          # whose Meetron-beta.appinstaller asset is replaced on every beta release;
+          # stable keeps the /releases/latest/download alias. Only the MSIX Uri
+          # inside the feed stays version-pinned.
+          $appInstaller = if ($beta) { 'Meetron-beta.appinstaller' } else { 'Meetron.appinstaller' }
           $appInstallerUri = if ($beta) {
-            "$base/download/$tag/Meetron.appinstaller"
+            "$base/download/$env:BETA_CHANNEL_TAG/$appInstaller"
           } else {
-            "$base/latest/download/Meetron.appinstaller"
+            "$base/latest/download/$appInstaller"
           }
           "artifact=$artifact" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
+          "beta=$(if ($beta) { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
+          "appinstaller=$appInstaller" >> $env:GITHUB_OUTPUT
           "package-uri=$packageUri" >> $env:GITHUB_OUTPUT
           "appinstaller-uri=$appInstallerUri" >> $env:GITHUB_OUTPUT
 
@@ -138,12 +155,18 @@ jobs:
         shell: pwsh
         env:
           WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+          # These are derived from the release tag, which a release author
+          # controls. Expanding them into the script body would let a tag such
+          # as "v1$(...)" execute inside this HSM-signing job, so they have to
+          # arrive as environment values rather than as template text.
+          PACKAGE_URI: ${{ steps.release.outputs.package-uri }}
+          APPINSTALLER_URI: ${{ steps.release.outputs.appinstaller-uri }}
         run: >-
           npm run package:windows --
           --pack-stage dist/windows/release-stage --output-dir dist/windows
           --publisher "$env:WINDOWS_SIGNING_PUBLISHER"
-          --package-uri "${{ steps.release.outputs.package-uri }}"
-          --appinstaller-uri "${{ steps.release.outputs.appinstaller-uri }}"
+          --package-uri "$env:PACKAGE_URI"
+          --appinstaller-uri "$env:APPINSTALLER_URI"
 
       - name: HSM-sign MSIX
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
@@ -156,17 +179,19 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      - name: Recompute signed checksum and verify distributed files
+      - name: Checksum the signed MSIX and verify distributed files
         shell: pwsh
         env:
           WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+          ARTIFACT_NAME: ${{ steps.release.outputs.artifact }}
+          APPINSTALLER_NAME: ${{ steps.release.outputs.appinstaller }}
         run: |
-          $artifact = "dist/windows/${{ steps.release.outputs.artifact }}"
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact).Hash.ToLowerInvariant()
-          "$hash  ${{ steps.release.outputs.artifact }}" | Set-Content -Encoding ascii "$artifact.sha256"
+          $artifact = "dist/windows/${env:ARTIFACT_NAME}"
+          npm run package:windows -- --checksum $artifact
           npm run verify:windows-package -- `
-            --msix $artifact --appinstaller dist/windows/Meetron.appinstaller `
-            --publisher "$env:WINDOWS_SIGNING_PUBLISHER" --require-release
+            --msix $artifact --appinstaller "dist/windows/${env:APPINSTALLER_NAME}" `
+            --publisher "$env:WINDOWS_SIGNING_PUBLISHER" --require-release `
+            --release-repository "$env:GITHUB_REPOSITORY"
 
       - name: Upload verified release evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -176,17 +201,46 @@ jobs:
           path: |
             dist/windows/${{ steps.release.outputs.artifact }}
             dist/windows/${{ steps.release.outputs.artifact }}.sha256
-            dist/windows/Meetron.appinstaller
-            dist/windows/Meetron.appinstaller.sha256
+            dist/windows/${{ steps.release.outputs.appinstaller }}
+            dist/windows/${{ steps.release.outputs.appinstaller }}.sha256
 
       - name: Attach verified assets to the published GitHub release
         if: github.event_name == 'release'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          ARTIFACT_NAME: ${{ steps.release.outputs.artifact }}
+          APPINSTALLER_NAME: ${{ steps.release.outputs.appinstaller }}
         run: >-
-          gh release upload "${{ steps.release.outputs.tag }}"
-          "dist/windows/${{ steps.release.outputs.artifact }}"
-          "dist/windows/${{ steps.release.outputs.artifact }}.sha256"
-          "dist/windows/Meetron.appinstaller"
-          "dist/windows/Meetron.appinstaller.sha256"
+          gh release upload "${env:RELEASE_TAG}"
+          "dist/windows/${env:ARTIFACT_NAME}"
+          "dist/windows/${env:ARTIFACT_NAME}.sha256"
+          "dist/windows/${env:APPINSTALLER_NAME}"
+          "dist/windows/${env:APPINSTALLER_NAME}.sha256"
+
+      # The beta feed URI is fixed, so the asset behind it has to be replaced in
+      # place. Without this the beta channel would still be a one-shot feed.
+      - name: Refresh the mutable beta App Installer feed
+        if: github.event_name == 'release' && steps.release.outputs.beta == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BETA_CHANNEL_TAG: ${{ env.BETA_CHANNEL_TAG }}
+          APPINSTALLER_NAME: ${{ steps.release.outputs.appinstaller }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $PSNativeCommandUseErrorActionPreference = $false
+          gh release view "${env:BETA_CHANNEL_TAG}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create "${env:BETA_CHANNEL_TAG}" --prerelease `
+              --title 'Meetron Windows beta update feed' `
+              --notes 'Mutable App Installer feed for the Meetron Windows beta channel. Signed MSIX builds stay on their own version releases; only this descriptor is replaced.'
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create the beta update feed release.' }
+          }
+          gh release upload "${env:BETA_CHANNEL_TAG}" `
+            "dist/windows/${env:APPINSTALLER_NAME}" `
+            "dist/windows/${env:APPINSTALLER_NAME}.sha256" --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not refresh the beta App Installer feed.' }
+          Write-Host "[release] beta feed now points at ${env:RELEASE_TAG}"

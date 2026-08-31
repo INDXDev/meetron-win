@@ -23,6 +23,7 @@ internal sealed class MeetronClient
 
     public string RepoRoot { get; }
     public string RuntimeDirectory { get; }
+    public bool IsPackaged => _packaged;
 
     public async Task<JsonElement> SendAsync(string type, object? payload = null, int timeoutSeconds = 45)
     {

@@ -35,7 +35,12 @@ public partial class App : Application
     {
         try
         {
-            await new MeetronClient().InstallIntegrationAsync();
+            // Only the MSIX has to re-point Chrome at its new versioned install
+            // path. An unpackaged development build must not silently take over
+            // an installed package's Native Messaging registration.
+            var client = new MeetronClient();
+            if (!client.IsPackaged) return;
+            await client.InstallIntegrationAsync();
         }
         catch (Exception error)
         {

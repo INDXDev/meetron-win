@@ -12,7 +12,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
-import { cliError, platform, run, runMain } from "./cli-utils.mjs";
+import {
+  cliError,
+  distinguishedNamesMatch,
+  platform,
+  powershellEnvironment,
+  run,
+  runMain,
+} from "./cli-utils.mjs";
+import { assertAppInstallerMatches } from "./windows-appinstaller.mjs";
 
 const usage = `Usage: node src/cli/verify-windows-release.mjs [options]
 
@@ -23,7 +31,9 @@ Options:
   --require-release       Require trusted signatures and reject LOCAL-TEST content.
   --allow-unsigned        Validate a LOCAL-TEST package structure without signatures.
   --allow-test-signature  Verify an integrity-valid self-signed LOCAL-TEST package (Windows only).
-  --appinstaller PATH     Also validate its checksum and package identity.
+  --appinstaller PATH     Also validate its checksum, package identity, and URIs.
+  --release-repository OWNER/NAME
+                          Require the App Installer URIs to point at this repository.
 `;
 
 const TEST_SIGNED_BINARIES = [
@@ -100,6 +110,11 @@ function assertPackageContracts(root, { release }) {
   if (!/Category="windows\.startupTask"/.test(manifest) || !/TaskId="MeetronStartup"/.test(manifest)) {
     throw cliError("[ERROR] MSIX StartupTask declaration is missing.", 1);
   }
+  if (!/<desktop6:FileSystemWriteVirtualization>disabled</.test(manifest) ||
+      !/<desktop6:RegistryWriteVirtualization>disabled</.test(manifest) ||
+      !/Name="unvirtualizedResources"/.test(manifest)) {
+    throw cliError("[ERROR] MSIX write virtualization is not disabled; Chrome could not see the Native Messaging registration.", 1);
+  }
   const extension = JSON.parse(readFileSync(resolve(root, "extension/manifest.json"), "utf8"));
   if (extension.key !== "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuoAvvccpOLZ0grfX2yM/i1UoNIRaopU8R0o9h74CKzsts5uFPdWNw1qcKSCvoWIErzeygLEF29Zc4fyHhu9biIakEZWB23qFqACjiOjBI1YOZvf6L3odyQcO1EGAc9v0N3WLOSu2o7iDKaLY3xeCQx82r/6eQRbDH3Axkuw4YP0EbUquviCTTvnRvIOwW8bZCyCSyWRT6hj/xQYJAiT7PkxIxZNdpQ/aciN4I/EsAes5d6rjGQ6yU2rDrTZKSvWr5dfpUEBJp881SBCfooCznELXwRw+NhC07rW/VphNZUHQSbKiYAj5jk9huUuXi1UmvDFIJtzIQDkofi/g5lrUDQIDAQAB") {
     throw cliError("[ERROR] Packaged extension key changed; its stable extension ID would be lost.", 1);
@@ -121,15 +136,17 @@ async function signatureSubjects(paths) {
   const command = [
     "$paths = Get-Content -Raw -LiteralPath $env:MEETRON_SIGNATURE_PATHS | ConvertFrom-Json",
     "$subjects = foreach ($path in $paths) { $signature = Get-AuthenticodeSignature -LiteralPath $path; $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($path)); [pscustomobject]@{ Path = [string]$path; Subject = [string]$certificate.Subject; Status = $signature.Status.ToString(); StatusMessage = [string]($signature.StatusMessage) } }",
-    "$subjects | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:MEETRON_SIGNATURE_RESULT -Encoding utf8NoBOM",
+    "$subjects | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:MEETRON_SIGNATURE_RESULT -Encoding utf8",
   ].join("; ");
+  // Windows PowerShell ships with every Windows 11 install; PowerShell 7 does
+  // not, and package verification must work on an unprepared user machine.
+  const powershell = resolve(process.env.SystemRoot || process.env.WINDIR || "C:\\Windows", "System32/WindowsPowerShell/v1.0/powershell.exe");
   try {
-    await run("pwsh.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
-      env: {
-        ...process.env,
+    await run(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
+      env: powershellEnvironment({
         MEETRON_SIGNATURE_PATHS: inputPath,
         MEETRON_SIGNATURE_RESULT: resultPath,
-      },
+      }),
       timeout: 120_000,
     });
     const parsed = JSON.parse(readFileSync(resultPath, "utf8").replace(/^\uFEFF/, ""));
@@ -143,7 +160,9 @@ async function verifySignatures(paths, publisher, { requireTimestamp = true } = 
   const subjects = await signatureSubjects(paths);
   if (subjects.length !== paths.length) throw cliError("[ERROR] Authenticode signer inventory is incomplete.", 1);
   for (const result of subjects) {
-    if (result.Subject !== publisher) {
+    // X509Certificate2.Subject re-renders the RDNs, so compare the parsed
+    // components; a different publisher still fails.
+    if (!distinguishedNamesMatch(result.Subject, publisher)) {
       throw cliError(`[ERROR] Authenticode signer subject does not match --publisher for ${result.Path} (subject=${result.Subject || "none"}).`, 1);
     }
   }
@@ -154,7 +173,7 @@ async function verifyTestSignatures(paths, publisher) {
   const subjects = await signatureSubjects(paths);
   if (subjects.length !== paths.length) throw cliError("[ERROR] Authenticode signer inventory is incomplete.", 1);
   for (const result of subjects) {
-    if (result.Subject !== publisher) {
+    if (!distinguishedNamesMatch(result.Subject, publisher)) {
       throw cliError(`[ERROR] Authenticode signer subject does not match --publisher for ${result.Path} (subject=${result.Subject || "none"}).`, 1);
     }
     if (result.Status === "Valid") continue;
@@ -188,7 +207,9 @@ async function verifyStage(root, { publisher, release, signed = release, testSig
   if (identity.name !== "io.github.bb8ad8.meetron" || identity.architecture !== "x64") {
     throw cliError("[ERROR] Unexpected Windows package identity or architecture.", 1);
   }
-  if (publisher && identity.publisher !== publisher) throw cliError("[ERROR] Manifest publisher does not match --publisher.", 1);
+  if (publisher && !distinguishedNamesMatch(identity.publisher, publisher)) {
+    throw cliError("[ERROR] Manifest publisher does not match --publisher.", 1);
+  }
   if (signed) {
     if (testSignature) {
       await verifyTestSignatures(
@@ -208,16 +229,9 @@ async function verifyStage(root, { publisher, release, signed = release, testSig
   return identity;
 }
 
-function verifyAppInstaller(path, identity, msixPath) {
+function verifyAppInstaller(path, identity, msixPath, { repository = "" } = {}) {
   verifyChecksum(path);
-  const source = readFileSync(path, "ascii");
-  for (const expected of [
-    `Name="${identity.name}"`, `Publisher="${identity.publisher.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"`,
-    `Version="${identity.version}"`, `ProcessorArchitecture="${identity.architecture}"`,
-  ]) if (!source.includes(expected)) throw cliError(`[ERROR] App Installer identity mismatch: ${expected}`, 1);
-  if (!source.includes(`Uri="`) || !source.includes(basename(msixPath))) {
-    throw cliError("[ERROR] App Installer does not reference the verified MSIX filename.", 1);
-  }
+  assertAppInstallerMatches(path, { identity, msixName: basename(msixPath), repository });
 }
 
 runMain(async () => {
@@ -228,6 +242,7 @@ runMain(async () => {
   let allowUnsigned = false;
   let allowTestSignature = false;
   let appInstaller = "";
+  let releaseRepository = "";
   const args = process.argv.slice(2);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -239,6 +254,7 @@ runMain(async () => {
     else if (argument === "--allow-unsigned") allowUnsigned = true;
     else if (argument === "--allow-test-signature") allowTestSignature = true;
     else if (argument === "--appinstaller") appInstaller = resolve(args[++index] || "");
+    else if (argument === "--release-repository") releaseRepository = args[++index] || "";
     else throw cliError(`Unknown option: ${argument}\n${usage}`);
   }
   if (Boolean(msix) === Boolean(stage)) throw cliError("[ERROR] Choose exactly one of --msix or --stage.", 1);
@@ -247,7 +263,10 @@ runMain(async () => {
   }
   if (release && !publisher) throw cliError("[ERROR] --require-release requires --publisher.", 1);
   if ((release || allowTestSignature) && platform.id !== "win32") throw cliError("[ERROR] Authenticode verification requires Windows.", 1);
-  if (allowTestSignature && publisher !== "CN=Meetron Local Test") {
+  if (releaseRepository && !/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(releaseRepository)) {
+    throw cliError("[ERROR] --release-repository must be OWNER/NAME.", 1);
+  }
+  if (allowTestSignature && !distinguishedNamesMatch(publisher, "CN=Meetron Local Test")) {
     throw cliError("[ERROR] Test-signature verification is restricted to CN=Meetron Local Test.", 1);
   }
   if (stage) {
@@ -276,7 +295,7 @@ runMain(async () => {
       signed: release || allowTestSignature,
       testSignature: allowTestSignature,
     });
-    if (appInstaller) verifyAppInstaller(appInstaller, identity, msix);
+    if (appInstaller) verifyAppInstaller(appInstaller, identity, msix, { repository: releaseRepository });
     process.stdout.write(`[OK] Verified ${basename(msix)} (${identity.version}, ${release ? "signed release" : allowTestSignature ? "signed local test" : "unsigned local test"}).\n`);
   } finally {
     rmSync(unpackRoot, { recursive: true, force: true });

@@ -148,7 +148,9 @@ runMain(async () => {
     if (["-h", "--help"].includes(argument)) { process.stdout.write(usage); return; }
     if (argument === "--dry-run") dryRun = true;
     else if (argument === "--target") targetOverride = args[++index] || "";
-    else if (argument === "--package") windowsPackagePath = args[++index] || "";
+    // The child installer runs with cwd set to repoRoot, so a relative package
+    // path has to be anchored to the caller's directory here.
+    else if (argument === "--package") windowsPackagePath = args[++index] ? resolve(args[index]) : "";
     else if (argument === "--publisher") publisher = args[++index] || "";
     else if (argument === "--allow-test-certificate") allowTestCertificate = true;
     else throw cliError(`Unknown option: ${argument}\n${usage}`);
@@ -166,7 +168,7 @@ runMain(async () => {
     return;
   }
   if (platform.id === "win32" && process.env.MEETRON_PACKAGED === "1" && !targetOverride) {
-    process.stdout.write("Meetron Windows updater\n=======================\nThis MSIX is associated with its signed Meetron.appinstaller feed. Windows checks that feed when Meetron launches and applies a higher package version in place.\nFor an offline update, pass --package PATH --publisher CERTIFICATE_SUBJECT.\n");
+    process.stdout.write("Meetron Windows updater\n=======================\nThis MSIX is associated with its HTTPS App Installer feed. Windows checks that feed when Meetron launches and applies a higher package version in place, accepting only a package Windows can verify against the same signing certificate.\nFor an offline update, pass --package PATH --publisher CERTIFICATE_SUBJECT.\n");
     return;
   }
   const sourceVersion = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).version;

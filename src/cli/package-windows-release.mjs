@@ -16,7 +16,15 @@ import {
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
 import { deflateSync } from "node:zlib";
-import { cliError, repoRoot, run, runMain, runVisible } from "./cli-utils.mjs";
+import {
+  cliError,
+  distinguishedNamesMatch,
+  repoRoot,
+  run,
+  runMain,
+  runVisible,
+} from "./cli-utils.mjs";
+import { writeAppInstaller } from "./windows-appinstaller.mjs";
 
 const IDENTITY_NAME = "io.github.bb8ad8.meetron";
 const LOCAL_PUBLISHER = "CN=Meetron Local Test";
@@ -37,8 +45,11 @@ Options:
   --native-dir DIRECTORY   Existing Rust release directory (implies --skip-build).
   --node PATH              Node executable to bundle (default: current Node).
   --skip-build             Use existing native and shell build output.
-  --package-uri URI        Emit Meetron.appinstaller using this MSIX URI.
-  --appinstaller-uri URI   Stable URI for Meetron.appinstaller.
+  --package-uri URI        Emit an App Installer feed pointing at this MSIX URI.
+  --appinstaller-uri URI   Stable, mutable URI the feed publishes itself at; its
+                           filename becomes the emitted feed filename.
+  --overwrite-appinstaller Replace an existing App Installer feed and checksum.
+  --checksum PATH          Write PATH.sha256 for an already-signed artifact and exit.
 `;
 
 function xmlEscape(value) {
@@ -60,11 +71,16 @@ function packageVersion(version) {
   return `${version}.0`;
 }
 
-function assertHttpsUri(name, value) {
-  if (!value) return;
-  let parsed;
-  try { parsed = new URL(value); } catch { throw cliError(`[ERROR] ${name} must be an absolute HTTPS URI.`, 1); }
-  if (parsed.protocol !== "https:") throw cliError(`[ERROR] ${name} must use HTTPS.`, 1);
+// The checksum is the only thing an offline installer can check, so it has to
+// describe the bytes that actually ship. Packing happens before HSM signing,
+// which rewrites the MSIX, so this is a separate step run after the signer.
+function writeChecksum(path) {
+  if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
+    throw cliError(`[ERROR] Artifact to checksum was not found: ${path}`, 1);
+  }
+  const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
+  writeFileSync(`${path}.sha256`, `${hash}  ${basename(path)}\n`);
+  process.stdout.write(`[OK] Created ${path}.sha256\n`);
 }
 
 function crc32(buffer) {
@@ -249,26 +265,22 @@ async function stagePackage({ stageRoot, shellDir, nativeDir, nodePath, skipBuil
   }
 }
 
-function writeAppInstaller({ outputDir, version, publisher, packageUri, appInstallerUri }) {
+function emitAppInstaller({ outputDir, version, publisher, packageUri, appInstallerUri, artifactName, overwrite }) {
   if (!packageUri && !appInstallerUri) return;
   if (!packageUri || !appInstallerUri) {
     throw cliError("[ERROR] --package-uri and --appinstaller-uri must be supplied together.", 1);
   }
-  assertHttpsUri("--package-uri", packageUri);
-  assertHttpsUri("--appinstaller-uri", appInstallerUri);
-  const document = `<?xml version="1.0" encoding="utf-8"?>
-<AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2021" Version="${packageVersion(version)}" Uri="${xmlEscape(appInstallerUri)}">
-  <MainPackage Name="${IDENTITY_NAME}" Publisher="${xmlEscape(publisher)}" Version="${packageVersion(version)}" ProcessorArchitecture="x64" Uri="${xmlEscape(packageUri)}" />
-  <UpdateSettings>
-    <OnLaunch HoursBetweenUpdateChecks="12" ShowPrompt="true" UpdateBlocksActivation="false" />
-    <AutomaticBackgroundTask />
-  </UpdateSettings>
-</AppInstaller>
-`;
-  const path = resolve(outputDir, "Meetron.appinstaller");
-  writeFileSync(path, document, "ascii");
-  const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
-  writeFileSync(`${path}.sha256`, `${hash}  ${basename(path)}\n`);
+  const path = writeAppInstaller({
+    outputDir,
+    identityName: IDENTITY_NAME,
+    publisher,
+    version: packageVersion(version),
+    architecture: "x64",
+    artifactName,
+    packageUri,
+    appInstallerUri,
+    overwrite,
+  });
   process.stdout.write(`[OK] Created ${path}\n[OK] Created ${path}.sha256\n`);
 }
 
@@ -286,6 +298,8 @@ runMain(async () => {
   let skipBuild = false;
   let packageUri = "";
   let appInstallerUri = "";
+  let overwriteAppInstaller = false;
+  let checksumTarget = "";
   const args = process.argv.slice(2);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -305,14 +319,23 @@ runMain(async () => {
     else if (argument === "--skip-build") skipBuild = true;
     else if (argument === "--package-uri") packageUri = args[++index] || "";
     else if (argument === "--appinstaller-uri") appInstallerUri = args[++index] || "";
+    else if (argument === "--overwrite-appinstaller") overwriteAppInstaller = true;
+    else if (argument === "--checksum") checksumTarget = resolve(args[++index] || "");
     else throw cliError(`Unknown option: ${argument}\n${usage}`);
+  }
+  if (checksumTarget) {
+    if (stageOnly || packStage) throw cliError("[ERROR] --checksum runs on its own, after the artifact has been signed.", 1);
+    writeChecksum(checksumTarget);
+    return;
   }
   if (!mode) throw cliError("[ERROR] Choose --local-test or --release.", 1);
   if (stageOnly === Boolean(packStage)) throw cliError("[ERROR] Choose exactly one of --stage-only or --pack-stage.", 1);
   if (stageOnly && !stageDir) throw cliError("[ERROR] --stage-only requires --stage-dir.", 1);
   if (!statSync(nodePath, { throwIfNoEntry: false })?.isFile()) throw cliError(`[ERROR] Node runtime was not found: ${nodePath}`, 1);
   if (mode === "release") {
-    if (!publisher || /^CN=Meetron Local Test$/i.test(publisher)) {
+    // Compared as parsed RDNs so that re-spaced, re-quoted, or reordered spellings
+    // of the local test subject cannot slip past this as a release publisher.
+    if (!publisher || distinguishedNamesMatch(publisher, LOCAL_PUBLISHER)) {
       throw cliError("[ERROR] Release packaging requires the HSM certificate publisher subject via --publisher.", 1);
     }
     const dirty = (await run("git", ["status", "--porcelain", "--untracked-files=all"])).stdout.trim();
@@ -332,8 +355,21 @@ runMain(async () => {
   }
   assertStagedContracts(packStage);
   const stagedManifest = readFileSync(resolve(packStage, "AppxManifest.xml"), "utf8");
-  if (!stagedManifest.includes(`Publisher="${xmlEscape(publisher)}"`) || !stagedManifest.includes(`Version="${packageVersion(pkg.version)}"`)) {
+  const stagedPublisher = stagedManifest.match(/<Identity\s[^>]*\bPublisher="([^"]*)"/)?.[1]
+    ?.replaceAll("&quot;", '"').replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&") || "";
+  if (!distinguishedNamesMatch(stagedPublisher, publisher) || !stagedManifest.includes(`Version="${packageVersion(pkg.version)}"`)) {
     throw cliError("[ERROR] Staged manifest identity does not match the requested package identity.", 1);
+  }
+  // The release stage is signed between --stage-only and --pack-stage by a
+  // separate workflow step. Nothing else downstream re-checks it, so packing an
+  // unsigned tree here would emit a release-named MSIX, checksum, and App
+  // Installer feed that all look publishable. Fail closed instead of trusting
+  // that the signing step ran.
+  if (mode === "release") {
+    await runVisible(process.execPath, [
+      resolve(repoRoot, "src/cli/verify-windows-release.mjs"),
+      "--stage", packStage, "--publisher", publisher, "--require-release",
+    ]);
   }
   mkdirSync(outputDir, { recursive: true });
   const label = mode === "local-test" ? "-LOCAL-TEST" : "";
@@ -344,9 +380,13 @@ runMain(async () => {
   }
   const makeappx = findSdkTool("makeappx.exe");
   await run(makeappx, ["pack", "/d", packStage, "/p", artifactPath, "/o"]);
-  const hash = createHash("sha256").update(readFileSync(artifactPath)).digest("hex");
-  writeFileSync(`${artifactPath}.sha256`, `${hash}  ${artifactName}\n`);
-  writeAppInstaller({ outputDir, version: pkg.version, publisher, packageUri, appInstallerUri });
-  process.stdout.write(`[OK] Created ${artifactPath}\n[OK] Created ${artifactPath}.sha256\n`);
+  emitAppInstaller({
+    outputDir, version: pkg.version, publisher, packageUri, appInstallerUri,
+    artifactName, overwrite: overwriteAppInstaller,
+  });
+  process.stdout.write(`[OK] Created ${artifactPath}\n`);
+  // No checksum here: the MSIX is signed after packing, which rewrites it. Run
+  // --checksum on the finished artifact so the published hash matches what ships.
+  process.stdout.write(`[NEXT] Sign ${artifactName}, then run: npm run package:windows -- --checksum "${artifactPath}"\n`);
   if (mode === "local-test") process.stderr.write("[WARN] LOCAL-TEST MSIX is unsigned and must not be published.\n");
 });

@@ -5,7 +5,15 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { cliError, platform, repoRoot, run, runMain } from "./cli-utils.mjs";
+import {
+  cliError,
+  distinguishedNamesMatch,
+  platform,
+  powershellEnvironment,
+  repoRoot,
+  run,
+  runMain,
+} from "./cli-utils.mjs";
 
 const NATIVE_HOST_NAME = "com.meeting_copilot.host";
 const NATIVE_HOST_MANIFEST = `${NATIVE_HOST_NAME}.json`;
@@ -151,8 +159,15 @@ runMain(async () => {
   if (!statSync(packagePath, { throwIfNoEntry: false })?.isFile() || !existsSync(`${packagePath}.sha256`)) {
     throw cliError(`[ERROR] MSIX or adjacent checksum was not found: ${packagePath}`, 1);
   }
-  if (allowTestCertificate && publisher !== "CN=Meetron Local Test") {
+  if (allowTestCertificate && !distinguishedNamesMatch(publisher, "CN=Meetron Local Test")) {
     throw cliError("[ERROR] --allow-test-certificate is restricted to CN=Meetron Local Test.", 1);
+  }
+  // The subject is a public string, so anyone can mint a self-signed certificate
+  // that carries it. This flag only relaxes Meetron's own verification -- Windows
+  // still refuses to deploy an untrusted signer -- but a command line alone must
+  // not be enough to turn it on, or a pasted install command reads as verified.
+  if (allowTestCertificate && process.env.MEETRON_ALLOW_TEST_CERT !== "1") {
+    throw cliError("[ERROR] --allow-test-certificate also requires MEETRON_ALLOW_TEST_CERT=1; it is a CI-only path.", 1);
   }
   const verify = await run(process.execPath, [
     resolve(repoRoot, "src/cli/verify-windows-release.mjs"),
@@ -168,17 +183,20 @@ runMain(async () => {
   }
   const script = [
     "Add-AppxPackage -Path $env:MEETRON_MSIX_PATH -ForceApplicationShutdown -ErrorAction Stop",
-    "$package = Get-AppxPackage -Name 'io.github.bb8ad8.meetron' -ErrorAction Stop",
-    "$package.InstallLocation",
-    "$package.PackageFamilyName",
+    "$package = @(Get-AppxPackage -Name 'io.github.bb8ad8.meetron' -ErrorAction Stop)",
+    "if ($package.Count -ne 1) { throw \"Expected exactly one installed Meetron package, found $($package.Count).\" }",
+    "'MEETRON_INSTALL_LOCATION=' + $package[0].InstallLocation",
+    "'MEETRON_PACKAGE_FAMILY_NAME=' + $package[0].PackageFamilyName",
   ].join("; ");
   const powershell = resolve(process.env.SystemRoot || process.env.WINDIR || "C:\\Windows", "System32/WindowsPowerShell/v1.0/powershell.exe");
   const { stdout } = await run(powershell, [
     "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script,
-  ], { env: { ...process.env, MEETRON_MSIX_PATH: packagePath }, timeout: 120_000 });
-  const packageOutput = stdout.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const installedRoot = packageOutput.at(-2) || "";
-  const packageFamilyName = packageOutput.at(-1) || "";
+  ], { env: powershellEnvironment({ MEETRON_MSIX_PATH: packagePath }), timeout: 120_000 });
+  const packageOutput = stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const field = (name) => packageOutput.findLast((line) => line.startsWith(`${name}=`))?.slice(name.length + 1).trim() || "";
+  const installedRoot = field("MEETRON_INSTALL_LOCATION");
+  const packageFamilyName = field("MEETRON_PACKAGE_FAMILY_NAME");
+  if (!installedRoot) throw cliError("[ERROR] Windows installed the package but its install location was not reported.", 1);
   if (!statSync(resolve(installedRoot, "runtime/node.exe"), { throwIfNoEntry: false })?.isFile()) {
     throw cliError("[ERROR] Windows installed the package but its bundled Node runtime was not found.", 1);
   }
@@ -193,7 +211,7 @@ runMain(async () => {
   ].join("\n");
   const { stdout: activationOutput } = await run(powershell, [
     "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", activationScript,
-  ], { env: { ...process.env, MEETRON_PACKAGE_FAMILY: packageFamilyName }, timeout: 30_000 });
+  ], { env: powershellEnvironment({ MEETRON_PACKAGE_FAMILY: packageFamilyName }), timeout: 30_000 });
   const activationPid = activationOutput.trim().split(/\r?\n/).findLast((line) => /^\d+$/.test(line.trim()))?.trim();
   if (!activationPid) throw cliError("[ERROR] Windows app-model activation returned no process ID.", 1);
   process.stdout.write(`[OK] Activated ${packageFamilyName}!Meetron as process ${activationPid}.\n`);
