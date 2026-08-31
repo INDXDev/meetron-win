@@ -105,10 +105,19 @@ try {
     await receiver.setLocalDescription(await receiver.createAnswer());
     await sender.setRemoteDescription(receiver.localDescription);
     const track = await received;
+    // Chrome decodes a remote track only while its stream also has a media
+    // element sink. Without one this control measured silence, which flipped
+    // browserControlCarriesAudio off and skipped every assertion below.
+    const remoteStream = new MediaStream([track]);
+    const sink = new Audio();
+    sink.muted = true;
+    sink.autoplay = true;
+    sink.srcObject = remoteStream;
+    await sink.play().catch(() => {});
     const context = new AudioContext();
     const analyser = context.createAnalyser();
     analyser.fftSize = 4096;
-    context.createMediaStreamSource(new MediaStream([track])).connect(analyser);
+    context.createMediaStreamSource(remoteStream).connect(analyser);
     await context.resume();
     let maximum = -Infinity;
     for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -220,7 +229,8 @@ try {
       const receivedTrack = globalThis.__meetronWebRtcLoopback.peerConnection
         .getReceivers().find((receiver) => receiver.track?.kind === "audio")?.track;
       if (receivedTrack) {
-        context.createMediaStreamSource(new MediaStream([receivedTrack])).connect(directAnalyser);
+        const receivedStream = new MediaStream([receivedTrack]);
+        context.createMediaStreamSource(receivedStream).connect(directAnalyser);
       }
       await context.resume();
       globalThis.__meetronToneReceiver = { analyser, directAnalyser, context, stream };

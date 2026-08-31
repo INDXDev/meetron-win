@@ -132,6 +132,12 @@ export function installWebRtcLoopbackPage({ role, hostnames, channel = "meetron-
   const nativeAudioNodeDisconnect = globalThis.AudioNode?.prototype?.disconnect;
   const nativeGetUserMedia = globalThis.MediaDevices?.prototype?.getUserMedia;
   const nativeSetSinkId = globalThis.HTMLMediaElement?.prototype?.setSinkId;
+  const nativeMediaElementPlay = globalThis.HTMLMediaElement?.prototype?.play;
+  const nativeSourceObjectSetter = globalThis.HTMLMediaElement && Object.getOwnPropertyDescriptor(
+    globalThis.HTMLMediaElement.prototype,
+    'srcObject',
+  )?.set;
+  const incomingSinks = new Map();
   const capturedElements = new WeakMap();
   const mirroredContexts = new WeakMap();
   const retainedSources = new Set();
@@ -246,7 +252,39 @@ export function installWebRtcLoopbackPage({ role, hostnames, channel = "meetron-
   // renegotiation (reconnect, tab reload, peer re-register) fires `track`
   // again, so stale sources must be disconnected or the remote audio is summed
   // into incomingDestination once per negotiation and grows louder each time.
+  // Chrome only decodes a remote WebRTC track while its stream also has a media
+  // element sink. Connected to WebAudio alone the graph pulls silence, so the
+  // bridge would forward a silent stream while RTP kept flowing. Give the
+  // arriving stream a muted, detached sink of its own, driven through the
+  // native members so the page's own srcObject and play hooks do not capture
+  // it back into the graph.
+  const attachIncomingSink = (track, stream) => {
+    if (!nativeSourceObjectSetter || !nativeMediaElementPlay) return;
+    try {
+      const sink = new Audio();
+      sink.muted = true;
+      sink.autoplay = true;
+      nativeSourceObjectSetter.call(sink, stream);
+      const started = nativeMediaElementPlay.call(sink);
+      if (started?.catch) started.catch((error) => recordFailure('remote-sink-play', error));
+      incomingSinks.set(track, sink);
+    } catch (error) {
+      recordFailure('remote-sink', error);
+    }
+  };
+  const releaseIncomingSink = (track) => {
+    const sink = incomingSinks.get(track);
+    if (!sink) return;
+    incomingSinks.delete(track);
+    try {
+      sink.pause();
+      if (nativeSourceObjectSetter) nativeSourceObjectSetter.call(sink, null);
+    } catch (error) {
+      recordFailure('release-remote-sink', error);
+    }
+  };
   const releaseIncomingSource = (track) => {
+    releaseIncomingSink(track);
     const source = incomingSources.get(track);
     if (!source) return;
     incomingSources.delete(track);
@@ -271,6 +309,7 @@ export function installWebRtcLoopbackPage({ role, hostnames, channel = "meetron-
       nativeAudioNodeConnect.call(source, incomingDestination);
       releaseIncomingSources();
       incomingSources.set(event.track, source);
+      attachIncomingSink(event.track, stream);
       event.track.addEventListener('ended', () => releaseIncomingSource(event.track), { once: true });
       resumeBridge();
     } catch (error) {
