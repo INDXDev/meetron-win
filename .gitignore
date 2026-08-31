@@ -5,6 +5,10 @@ node_modules/
 /docs/*.local.*
 /native/**/.build
 /native/windows/target
+/native/windows-shell/bin
+/native/windows-shell/obj
+/native/windows-shell-tests/bin
+/native/windows-shell-tests/obj
 /dist/
 *.p8
 *.p12

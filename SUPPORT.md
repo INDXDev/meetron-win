@@ -13,10 +13,11 @@ branch or the latest GitHub Release.
 | macOS 13 or later on Intel | Best effort; Universal Binary and CI build coverage |
 | Google Chrome official build | Required |
 | Node.js 22 or 24 LTS | Supported |
+| Windows 11 Phase 2 source build | Beta; WinUI 3 shell and VB-CABLE A+B |
 | Google Meet | Beta |
 | Zoom Web App guest join | Optional beta |
 | Zoom desktop application automation | Not supported |
-| Windows, Linux, mobile | Not supported in the current Community release |
+| Linux, mobile | Not supported in the current Community release |
 | BlackHole 2ch / 16ch | Existing-user migration backend only |
 
 Chrome, ChatGPT Web, Google Meet, and Zoom Web App are upstream services whose
@@ -32,7 +33,7 @@ guarantee uninterrupted automation after an upstream UI change.
 5. Remove meeting URLs, Zoom passcodes, Project identifiers, cookies, account
    names, and authentication information from every attachment.
 
-Include the Meetron version, macOS version, chip architecture, Chrome version,
+Include the Meetron version, operating-system version, chip architecture, Chrome version,
 Node.js version, selected audio backend, expected result, actual result, and a
 minimal reproduction. A redacted
 `.meeting-copilot-runtime/meeting-launch.log` may be useful.

@@ -4,12 +4,15 @@ Meetron runs locally, but the audio bridge sends meeting audio to ChatGPT Web Vo
 
 ## Local data
 
-The project may store the following data on the Mac:
+The project may store the following data on the Mac or Windows PC:
 
-- `.meeting-copilot.env`: ChatGPT Project URL and local automation ports
+- `.meeting-copilot.env`: local automation ports and, on macOS, the ChatGPT
+  Project URL (Phase 2 migrates that URL out of legacy Windows files)
 - `.meeting-copilot-runtime/`: launch status, recent microphone state, setup confirmations, saved audio-device names and Core Audio UIDs, and bounded diagnostic logs
 - Shared dedicated Chrome profile at `~/Library/Application Support/MeetingCopilot/GPTParticipantChrome/`: ChatGPT and Google sessions, cookies, permissions, and extension state
 - Chrome extension local storage: the last entered Meet URL and panel layout preferences
+- Windows Credential Manager: the ChatGPT Project URL saved by the Phase 2 shell
+- `%LOCALAPPDATA%\Meetron\`: ACL-protected runtime state and non-secret shell preferences on Windows
 
 These paths are excluded from Git. Meetron does not intentionally record or transcribe meeting audio, and it does not send local runtime files to this repository's maintainers.
 
@@ -33,4 +36,4 @@ Remove the extension from both Chrome profiles, then run:
 node src/cli/uninstall.mjs --remove-data --yes
 ```
 
-This deletes the Native Messaging registration, local configuration and runtime files, the shared dedicated Chrome profile, and the legacy pre-0.6 ChatGPT profile if present. Add `--remove-audio-driver` to remove the system-level Meetron virtual audio plug-ins as well. It does not delete server-side ChatGPT chats or submitted screenshots, Google account data, legacy BlackHole packages, or the repository checkout.
+This deletes the Native Messaging registration, local configuration and runtime files, the shared dedicated Chrome profile, and the legacy pre-0.6 ChatGPT profile if present. On Windows it also deletes shell preferences and the `Meetron:community:chatgpt-project-url` Credential Manager entry. Add `--remove-audio-driver` on macOS to remove the system-level Meetron virtual audio plug-ins as well; Meetron never removes third-party VB-CABLE. It does not delete server-side ChatGPT chats or submitted screenshots, Google account data, legacy BlackHole packages, or the repository checkout.

@@ -8,6 +8,7 @@ import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const portable = [
   "platform-contract-test.mjs",
+  "credential-store-test.mjs",
   "audio-backend-test.mjs",
   "protocol-test.mjs",
   "session-state-test.mjs",

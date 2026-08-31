@@ -1,6 +1,6 @@
 # Meetron Windows native helpers
 
-Phase 1 uses two small Rust executables. They are source-built beta components,
+Phase 2 uses three small Rust executables. They are source-built beta components,
 not a signed installer or a replacement virtual-audio driver.
 
 - `meetron-host.exe` is Chrome's Native Messaging entry point. It reads
@@ -12,6 +12,9 @@ not a signed installer or a replacement virtual-audio driver.
 - `meetron-audioctl.exe` enumerates active capture/render endpoints through
   MMDevice, returns stable endpoint IDs in the existing JSON CLI schema, and
   supports the same status/default-device commands as the macOS helper.
+- `meetron-credential.exe` implements the JavaScript credential-store contract
+  with per-user Windows Credential Manager generic credentials. Secret values
+  are accepted only on stdin and are never placed in process arguments.
 
 Build and verify on Windows 11 with the stable Rust toolchain:
 
@@ -31,6 +34,9 @@ The MMDevice default-endpoint setter uses Windows' `IPolicyConfig` interface,
 which Microsoft does not document as a public API. Normal Meetron routing does
 not change system defaults; this command remains only for compatibility with
 the established audio-controller protocol and legacy restore flow.
+
+The native shell lives separately under `native/windows-shell/`; see its README
+for WinUI 3 build and runtime details.
 
 The Rust dependencies are `serde`/`serde_json` and Microsoft's `windows-rs`
 bindings. All are used under their published MIT or Apache-2.0 terms and are

@@ -7,6 +7,11 @@ user-visible changes; implementation-only refactors stay in Git history.
 
 ### Added
 
+- Windows 11 Phase 2 native WinUI 3 shell with live tray state, setup,
+  diagnostics, settings, admission/Voice/session-end notifications, and a
+  fail-closed `Ctrl+Alt+M` GPT participant mute hotkey.
+- Windows Credential Manager storage for the ChatGPT Project URL and a
+  microphone privacy preflight with a deep link to Windows Settings.
 - Windows 11 Phase 1 beta support with a complete platform adapter, Chrome
   Native Messaging registry registration, ACL-protected local state, Job Object
   process cleanup, MMDevice audio discovery, and VB-CABLE A+B routing.

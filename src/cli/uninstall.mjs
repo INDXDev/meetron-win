@@ -4,6 +4,8 @@ import { existsSync, realpathSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { restoreAudio } from "../../scripts/audio-backend.mjs";
+import { getCredentialStore } from "../platform/credential-store-registry.mjs";
+import { PROJECT_URL_CREDENTIAL } from "../platform/project-settings.mjs";
 import {
   cliError,
   platform,
@@ -96,6 +98,14 @@ runMain(async () => {
   await waitForChild(spawnNode(resolve(repoRoot, "src/cli/install-control-ui.mjs"), ["--uninstall", "--quiet"]));
   if (removeAudioDriver) await run(resolve(repoRoot, "native/audio-driver/uninstall-driver.sh"));
   if (removeData) {
+    if (platform.id === "win32") {
+      try {
+        await getCredentialStore(platform.id, { repoRoot }).delete(PROJECT_URL_CREDENTIAL);
+      } catch (error) {
+        process.stderr.write(`Could not remove the Windows Credential Manager entry: ${error.message}\n`);
+      }
+      rmSync(resolve(dirname(runtimeDir), "shell-settings.json"), { force: true });
+    }
     for (const target of [runtimeDir, paths.dedicatedProfileDir, paths.legacyProfileDir]) {
       rmSync(target, { recursive: true, force: true });
     }
