@@ -14,6 +14,7 @@ branch or the latest GitHub Release.
 | Google Chrome official build | Required |
 | Node.js 22 or 24 LTS | Supported |
 | Windows 11 Phase 2 source build | Beta; WinUI 3 shell and VB-CABLE A+B |
+| Windows driverless WebRTC audio | Experimental; explicit backend flag and separate Meet/Zoom validation required |
 | Google Meet | Beta |
 | Zoom Web App guest join | Optional beta |
 | Zoom desktop application automation | Not supported |
@@ -23,6 +24,12 @@ branch or the latest GitHub Release.
 Chrome, ChatGPT Web, Google Meet, and Zoom Web App are upstream services whose
 interfaces can change without notice. A supported local environment does not
 guarantee uninterrupted automation after an upstream UI change.
+
+Driverless audio reports must identify Google Meet or Zoom Web explicitly; a
+result from one provider is not evidence for the other. Include the measurement
+summary from `npm run measure:audio-bridge -- --mode webrtc-loopback`, and compare
+with `--mode cable` when the two VB-CABLE endpoints are available. See
+[`docs/driverless-audio-validation.md`](docs/driverless-audio-validation.md).
 
 ## Before opening an issue
 

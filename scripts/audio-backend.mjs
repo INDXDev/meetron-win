@@ -58,6 +58,13 @@ export function createAudioBackends({ labelPrefix = "Meetron: " } = {}) {
         meetingSpeaker: { name: "CABLE-A Input (VB-Audio Cable A)" },
       },
     }),
+    webrtcLoopback: defineAudioBackend({
+      id: "webrtc-loopback",
+      label: "Driverless WebRTC loopback (experimental)",
+      transport: "webrtc-loopback",
+      meetingToAI: { name: "Meetron WebRTC: Meeting to AI" },
+      aiToMeeting: { name: "Meetron WebRTC: AI to Meeting" },
+    }),
   });
 }
 
@@ -95,13 +102,14 @@ function configuredBackendPreference() {
 }
 
 export function selectAudioBackend(devices, requested = configuredBackendPreference()) {
-  if (!["auto", "custom", "legacy-custom", "blackhole", "vb-cable"].includes(requested)) {
+  if (!["auto", "custom", "legacy-custom", "blackhole", "vb-cable", "webrtc-loopback"].includes(requested)) {
     throw new Error(`Unsupported audio backend: ${requested}`);
   }
   const available = (backend) => requiredTargets(backend)
     .every((required) => resolveDeviceTarget(devices, required));
   if (requested === "legacy-custom") return AUDIO_BACKENDS.legacyCustom;
   if (requested === "vb-cable") return AUDIO_BACKENDS.vbCable;
+  if (requested === "webrtc-loopback") return AUDIO_BACKENDS.webrtcLoopback;
   if (requested !== "auto") return AUDIO_BACKENDS[requested];
   if (available(AUDIO_BACKENDS.custom)) return AUDIO_BACKENDS.custom;
   if (available(AUDIO_BACKENDS.legacyCustom)) return AUDIO_BACKENDS.legacyCustom;
@@ -115,6 +123,7 @@ export function routingForBackend(backend) {
 }
 
 function requiredTargets(backend) {
+  if (backend.transport === "webrtc-loopback") return [];
   const seen = new Set();
   return Object.values(routingForBackend(backend)).filter((target) => {
     const key = `${target.uid}\0${target.name}`;
@@ -122,6 +131,31 @@ function requiredTargets(backend) {
     seen.add(key);
     return true;
   });
+}
+
+function driverlessStatus() {
+  const backend = AUDIO_BACKENDS.webrtcLoopback;
+  return {
+    ready: true,
+    devicesReady: true,
+    controller: "browser",
+    backend: backend.id,
+    backendLabel: backend.label,
+    transport: backend.transport,
+    input: "",
+    output: "",
+    inputUID: "",
+    outputUID: "",
+    devices: [],
+    deviceDetails: [],
+    requiredDevices: {},
+    requiredDeviceNames: [],
+    routing: routingForBackend(backend),
+    systemDefaultsUnchanged: true,
+    audioControlInstalled: false,
+    switchAudioSourceInstalled: false,
+    experimental: true,
+  };
 }
 
 function audioControlExecutable() {
@@ -184,6 +218,7 @@ function isDevice(device, target) {
 }
 
 export async function getAudioStatus() {
+  if (configuredBackendPreference() === "webrtc-loopback") return driverlessStatus();
   try {
     const system = await systemStatus();
     const backend = selectAudioBackend(system.devices);
@@ -196,6 +231,7 @@ export async function getAudioStatus() {
       controller: system.controller,
       backend: backend.id,
       backendLabel: backend.label,
+      transport: backend.transport,
       input: system.input?.name || "",
       output: system.output?.name || "",
       inputUID: system.input?.uid || "",
@@ -252,6 +288,9 @@ function runtimeStatePath() {
 }
 
 export async function configureAudio({ dryRun = false } = {}) {
+  if (configuredBackendPreference() === "webrtc-loopback") {
+    return { ...driverlessStatus(), dryRun, restorable: false };
+  }
   const { statePath } = runtimeStatePath();
   const legacyRestorePending = existsSync(statePath);
   const legacyRestore = legacyRestorePending && !dryRun

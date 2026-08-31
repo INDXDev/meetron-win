@@ -7,6 +7,11 @@ user-visible changes; implementation-only refactors stay in Git history.
 
 ### Added
 
+- Experimental Windows driverless audio backend using a tab-to-tab WebRTC
+  loopback, extension-service-worker signaling, separate Meet and Zoom Web
+  preparation paths, and a reproducible WebRTC-versus-cable measurement tool.
+  Automatic backend selection remains on the existing device path until both
+  providers pass the documented quality bar.
 - Windows 11 Phase 2 native WinUI 3 shell with live tray state, setup,
   diagnostics, settings, admission/Voice/session-end notifications, and a
   fail-closed `Ctrl+Alt+M` GPT participant mute hotkey.

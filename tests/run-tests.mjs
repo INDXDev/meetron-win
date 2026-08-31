@@ -10,6 +10,7 @@ const portable = [
   "platform-contract-test.mjs",
   "credential-store-test.mjs",
   "audio-backend-test.mjs",
+  "webrtc-loopback-contract-test.mjs",
   "protocol-test.mjs",
   "session-state-test.mjs",
   "session-orchestrator-test.mjs",
@@ -36,6 +37,7 @@ const browser = [
   "prepare-meet-test.mjs",
   "zoom-web-provider-test.mjs",
   "prepare-zoom-test.mjs",
+  "webrtc-loopback-browser-test.mjs",
 ];
 const tests = [...portable];
 if (process.platform === "darwin") tests.push(...macOnly);

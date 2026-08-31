@@ -41,6 +41,7 @@
     "test": "node tests/run-tests.mjs",
     "test:windows": "cargo test --manifest-path native/windows/Cargo.toml && npm run test:windows-shell",
     "test:windows-shell": "dotnet build native/windows-shell-tests/Meetron.WindowsShell.Tests.csproj -c Release -p:Platform=x64 --nologo && dotnet native/windows-shell-tests/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/Meetron.WindowsShell.Tests.dll",
+    "measure:audio-bridge": "node scripts/measure-audio-bridge.mjs",
     "test:native": "./native/audio-driver/test-driver.sh",
     "test:package": "./native/audio-driver/test-package.sh"
   },
