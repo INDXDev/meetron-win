@@ -191,6 +191,10 @@ function assertStagedContracts(stageRoot) {
   for (const required of [
     "AppxManifest.xml",
     "Meetron.WindowsShell.exe",
+    // Without a package-shaped resource index the packaged shell cannot
+    // resolve ms-appx:/// and throws before its window opens, which is
+    // only visible once the MSIX is installed. Catch it here instead.
+    "resources.pri",
     "runtime/node.exe",
     "native/windows/target/release/meetron-host.exe",
     "native/windows/target/release/meetron-audioctl.exe",

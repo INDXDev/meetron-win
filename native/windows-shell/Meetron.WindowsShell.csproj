@@ -15,6 +15,17 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PublishReadyToRun>false</PublishReadyToRun>
+
+    <!-- The shell is built unpackaged (WindowsPackageType None) but ships
+         wrapped in the MSIX, so it runs with package identity. MRT then
+         resolves every ms-appx:/// URI against the package's resources.pri,
+         and an unpackaged build names its index $(TargetName).pri with a
+         $(TargetName) root resource map. Neither matches what a package
+         needs, so XAML cannot find themeresources.xaml and the window throws
+         before it opens. Name the index the way a package is read, and give
+         its root map the MSIX identity from package-windows-release.mjs. -->
+    <ProjectPriFileName>resources.pri</ProjectPriFileName>
+    <ProjectPriIndexName>io.github.bb8ad8.meetron</ProjectPriIndexName>
   </PropertyGroup>
 
   <ItemGroup>

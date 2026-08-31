@@ -39,6 +39,7 @@ try {
   mkdirSync(shell, { recursive: true });
   mkdirSync(native, { recursive: true });
   writeFileSync(resolve(shell, "Meetron.WindowsShell.exe"), "fixture shell\n");
+  writeFileSync(resolve(shell, "resources.pri"), "fixture resource index\n");
   for (const executable of ["meetron-host.exe", "meetron-audioctl.exe", "meetron-credential.exe"]) {
     writeFileSync(resolve(native, executable), `fixture ${executable}\n`);
   }
@@ -65,7 +66,7 @@ try {
   ]);
   assert.equal(staged.status, 0, staged.stderr || staged.stdout);
   for (const path of [
-    "AppxManifest.xml", "runtime/node.exe", "Meetron.WindowsShell.exe",
+    "AppxManifest.xml", "runtime/node.exe", "Meetron.WindowsShell.exe", "resources.pri",
     "extension/audio-bridge-content-script.js", "native/windows/target/release/meetron-host.exe",
     "node_modules/playwright-core/package.json", "Meetron Setup.cmd", "Meetron Update.cmd",
   ]) assert.equal(existsSync(resolve(stage, path)), true, path);
@@ -84,8 +85,21 @@ try {
   assert.equal(verified.status, 0, verified.stderr || verified.stdout);
 
   const packageScript = readFileSync(resolve(repoRoot, "src/cli/package-windows-release.mjs"), "utf8");
+  assert.match(packageScript, /"resources\.pri",/);
   assert.match(packageScript, /Release MSIX packages require a clean Git worktree/);
   assert.match(packageScript, /audio-bridge-content-script\.js/);
+  // A packaged WinUI shell reads its resources out of resources.pri through a
+  // root resource map named for the package identity. If the project and the
+  // MSIX identity ever drift apart the shell still builds and still packages,
+  // and only fails once installed, so hold them together here.
+  const shellProject = readFileSync(resolve(repoRoot, "native/windows-shell/Meetron.WindowsShell.csproj"), "utf8");
+  const packageIdentity = packageScript.match(/IDENTITY_NAME = "([^"]+)"/)?.[1];
+  assert.ok(packageIdentity, "package-windows-release.mjs must declare IDENTITY_NAME");
+  assert.match(shellProject, /<ProjectPriFileName>resources\.pri<\/ProjectPriFileName>/);
+  assert.ok(
+    shellProject.includes(`<ProjectPriIndexName>${packageIdentity}</ProjectPriIndexName>`),
+    `the shell resource index must be named for the MSIX identity ${packageIdentity}`,
+  );
   const verifyScript = readFileSync(resolve(repoRoot, "src/cli/verify-windows-release.mjs"), "utf8");
   assert.match(verifyScript, /Trusted timestamped Authenticode signature is invalid/);
   assert.match(verifyScript, /X509Certificate.*CreateFromSignedFile/);
