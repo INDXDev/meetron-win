@@ -3,6 +3,7 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -110,7 +111,10 @@ async function listProcesses(env = process.env) {
   const { stdout } = await execFileAsync(
     powershellExecutable(env),
     ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
-    { encoding: "utf8", timeout: 5_000, windowsHide: true },
+    // The default 1 MiB execFile buffer is not enough for every command line on
+    // a busy desktop, and exceeding it rejects with ENOBUFS instead of
+    // returning the process list.
+    { encoding: "utf8", timeout: 15_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true },
   );
   return parseJsonList(stdout)
     .map((entry) => ({
@@ -145,8 +149,21 @@ function processExists(pid) {
   }
 }
 
-function terminate(pid, signal = "SIGTERM") {
-  process.kill(pid, signal === "SIGKILL" ? "SIGKILL" : "SIGTERM");
+function terminate(pid, signal = "SIGTERM", env = process.env) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  const force = signal === "SIGKILL";
+  // Node maps every signal to TerminateProcess on Windows, so a plain
+  // process.kill() would make the graceful stage of stopProfileGracefully()
+  // a hard kill and leave the dedicated Chrome profile dirty. taskkill
+  // without /F posts WM_CLOSE first, which is the real graceful path.
+  const args = force ? ["/PID", String(pid), "/F"] : ["/PID", String(pid)];
+  const result = spawnSync(systemExecutable("taskkill.exe", env), args, {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0 && processExists(pid)) {
+    process.kill(pid, force ? "SIGKILL" : "SIGTERM");
+  }
 }
 
 function terminateTree(pid, _signal = "SIGTERM", env = process.env) {
@@ -198,8 +215,17 @@ const processCapability = {
 
 function commandLineArgument(command, name) {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = command.match(new RegExp(`(?:^|\\s)--${escapedName}=(?:"([^"]*)"|([^\\s]+))`, "i"));
-  return match?.[1] ?? match?.[2] ?? "";
+  // Windows command lines quote a switch in two different ways. Node (libuv)
+  // wraps the whole argument when the value contains a space, producing
+  // "--user-data-dir=C:\Users\A B\Profile", while Chromium quotes only the
+  // value. Both forms must parse, or a profile under a path with a space is
+  // never matched and the dedicated Chrome instance can be neither reused nor
+  // stopped.
+  const match = command.match(new RegExp(
+    `(?:^|\\s)(?:"--${escapedName}=([^"]*)"|--${escapedName}=(?:"([^"]*)"|([^\\s]+)))`,
+    "i",
+  ));
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? "";
 }
 
 async function profileProcesses(profileDir) {
@@ -246,6 +272,30 @@ function nativeBuildPath(repoRoot, executableName) {
   return win32.resolve(repoRoot, "native/windows/target/release", executableName);
 }
 
+// Windows locks a running image, so copying over meetron-host.exe fails while
+// Chrome still has the Native Messaging Host alive. Renaming the locked image
+// out of the way is allowed, so a re-install during an open session succeeds
+// instead of stopping with EBUSY.
+function replaceExecutable(source, target) {
+  try {
+    copyFileSync(source, target);
+    return;
+  } catch (error) {
+    if (!["EBUSY", "EPERM", "EACCES", "ETXTBSY"].includes(error.code) || !existsSync(target)) {
+      throw error;
+    }
+    const retired = `${target}.${process.pid}.old`;
+    renameSync(target, retired);
+    try {
+      copyFileSync(source, target);
+    } catch (copyError) {
+      renameSync(retired, target);
+      throw copyError;
+    }
+    try { rmSync(retired, { force: true }); } catch { /* still running; removed on the next install */ }
+  }
+}
+
 function installLauncher({ repoRoot, runtimeDir, nodePath, scriptPath }) {
   const source = nativeBuildPath(repoRoot, "meetron-host.exe");
   if (!existsSync(source)) {
@@ -253,7 +303,7 @@ function installLauncher({ repoRoot, runtimeDir, nodePath, scriptPath }) {
   }
   const launcherPath = win32.resolve(runtimeDir, "meetron-host.exe");
   const configPath = win32.resolve(runtimeDir, "meetron-host.conf");
-  copyFileSync(source, launcherPath);
+  replaceExecutable(source, launcherPath);
   writeFileSync(configPath, `${nodePath}\r\n${scriptPath}\r\n`, "utf8");
   applyAcl(launcherPath, false);
   applyAcl(configPath, false);

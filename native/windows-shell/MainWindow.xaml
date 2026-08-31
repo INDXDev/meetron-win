@@ -54,7 +54,7 @@
             <PasswordBox x:Name="MeetingUrl" Header="Meeting URL" PasswordRevealMode="Peek" />
             <StackPanel Orientation="Horizontal" Spacing="10">
               <Button Content="Start meeting" Click="StartSession_Click" Style="{ThemeResource AccentButtonStyle}" />
-              <Button Content="Mute / unmute GPT" Click="ToggleMute_Click" />
+              <Button x:Name="ToggleMuteButton" Content="Mute / unmute GPT" Click="ToggleMute_Click" />
               <Button Content="End session" Click="StopSession_Click" />
             </StackPanel>
             <InfoBar x:Name="SessionInfo" IsOpen="False" IsClosable="True" />

@@ -12,7 +12,8 @@ internal sealed record ShellSnapshot(
     bool ProjectConfigured,
     bool SetupComplete,
     string ProviderId,
-    string? Error)
+    string? Error,
+    bool Degraded = false)
 {
     public static ShellSnapshot Empty { get; } = new(
         false, "idle", "not-running", "unavailable", false, false, false, false, "", null);
@@ -52,7 +53,7 @@ internal sealed record ShellSnapshot(
             configuration.GetBooleanOrDefault("projectConfigured"),
             configuration.GetBooleanOrDefault("setupComplete"),
             launch.GetStringOrDefault("providerId", meeting.GetStringOrDefault("providerId", "")),
-            launch.GetStringOrDefault("error", null));
+            launch.GetStringOrNull("error"));
     }
 
     private static JsonElement Child(JsonElement element, string name) =>
@@ -71,6 +72,17 @@ internal static class JsonElementExtensions
             return value.GetString() ?? fallback ?? "";
         }
         return fallback ?? "";
+    }
+
+    public static string? GetStringOrNull(this JsonElement element, string name)
+    {
+        if (element.ValueKind == JsonValueKind.Object &&
+            element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+        {
+            var text = value.GetString();
+            return string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+        return null;
     }
 
     public static bool GetBooleanOrDefault(this JsonElement element, string name)

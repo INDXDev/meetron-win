@@ -28,6 +28,19 @@ var ended = ShellTransitions.Evaluate(joined, joined with
 Require(ended.Any(item => item.Title.Contains("ended")), "Unexpected meeting loss must notify");
 Require(ShellTransitions.Evaluate(idle, idle).Count == 0, "Stable idle state must stay silent");
 
+var unreadable = joined with
+{
+    HostConnected = false,
+    MeetingConnection = "not-running",
+    VoiceActive = false,
+    Error = "Meetron command timed out",
+    Degraded = true,
+};
+Require(ShellTransitions.Evaluate(joined, unreadable).Count == 0,
+    "A failed status read must not report the session as ended");
+Require(ShellTransitions.Evaluate(unreadable, joined).Count == 0,
+    "Recovering from a failed status read must not report a new admission");
+
 Require(MicrophonePrivacy.Evaluate("Allow", "Allow") == MicrophonePrivacyState.Allowed,
     "Allowed microphone settings must pass preflight");
 Require(MicrophonePrivacy.Evaluate("Allow", "Deny") == MicrophonePrivacyState.Blocked,
@@ -49,5 +62,6 @@ using var document = JsonDocument.Parse("""
 var parsed = ShellSnapshot.FromStatus(document.RootElement);
 Require(parsed.SessionActive && parsed.GptMuted && parsed.VoiceActive, "Live shell state must parse canonical host status");
 Require(!parsed.TrayText.Contains("google"), "Tray text must not expose meeting details");
+Require(parsed.Error is null && !parsed.Degraded, "A healthy status must not be reported as limited");
 
 Console.WriteLine("WinUI shell state, notifications, and microphone privacy passed.");

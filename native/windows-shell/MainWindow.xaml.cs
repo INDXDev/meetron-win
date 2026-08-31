@@ -15,6 +15,9 @@ public sealed partial class MainWindow : Window
     private readonly SessionMonitor _monitor;
     private readonly NotificationService _notifications;
     private readonly SettingsStore _settingsStore = new();
+    // Deliberately never disposed: a toggle that started before the window closed still
+    // has to be able to release it.
+    private readonly SemaphoreSlim _muteGate = new(1, 1);
     private ShellSettings _settings;
     private NativeWindowController? _native;
     private AppWindow? _appWindow;
@@ -55,7 +58,7 @@ public sealed partial class MainWindow : Window
         };
         _native = new NativeWindowController(hwnd);
         _native.ShowRequested += () => DispatcherQueue.TryEnqueue(ShowWindow);
-        _native.ToggleMuteRequested += () => DispatcherQueue.TryEnqueue(async () => await ToggleMuteAsync());
+        _native.ToggleMuteRequested += () => DispatcherQueue.TryEnqueue(async () => await ToggleMuteAsync(fromBackground: true));
         _native.ExitRequested += () => DispatcherQueue.TryEnqueue(ExitApplication);
         LoadSettingsControls();
         Navigation.SelectedItem = Navigation.MenuItems[0];
@@ -69,13 +72,17 @@ public sealed partial class MainWindow : Window
             : snapshot.HostConnected ? "Meetron is ready" : "Meetron host is unavailable";
         Summary.Text = snapshot.TrayText.Replace("Meetron — ", "") +
             (string.IsNullOrWhiteSpace(snapshot.ProviderId) ? "" : $" · {snapshot.ProviderId}");
-        Footer.Text = snapshot.Error is null
+        Footer.Text = string.IsNullOrEmpty(snapshot.Error)
             ? $"Audio: {(snapshot.AudioReady ? "ready" : "not ready")} · Project: {(snapshot.ProjectConfigured ? "configured" : "not configured")} · Setup: {(snapshot.SetupComplete ? "complete" : "incomplete")}"
             : $"Limited status: {snapshot.Error}";
         _native?.Update(snapshot);
     }
 
-    private async Task ExecuteAsync(Func<Task> operation, InfoBar info, string success)
+    private async Task ExecuteAsync(
+        Func<Task> operation,
+        InfoBar info,
+        string success,
+        string? failureNotificationTitle = null)
     {
         info.IsOpen = false;
         try
@@ -91,15 +98,42 @@ public sealed partial class MainWindow : Window
             info.Severity = InfoBarSeverity.Error;
             info.Message = error.Message;
             info.IsOpen = true;
+            if (failureNotificationTitle is not null && _settings.NotificationsEnabled)
+            {
+                _notifications.Show(failureNotificationTitle, error.Message);
+            }
+            // A command that timed out can still be finishing in the background, so the
+            // status is re-read instead of being left on the pre-command snapshot.
+            // RefreshAsync swallows its own failures, so it cannot mask the error above.
+            await _monitor.RefreshAsync();
         }
     }
 
-    private async Task ToggleMuteAsync()
+    // `participant.mic.toggle` is a read-modify-write on the provider's live microphone
+    // state, so two overlapping toggles — the button, the tray item and Ctrl+Alt+M can
+    // all fire independently — would both read the same state and leave the microphone
+    // in an indeterminate one while both report success. Only one toggle is ever in
+    // flight; a press that arrives while one is running is dropped rather than queued,
+    // because a queued second toggle would just undo the first.
+    private async Task ToggleMuteAsync(bool fromBackground = false)
     {
-        await ExecuteAsync(
-            async () => { await _client.SendAsync("participant.mic.toggle"); },
-            SessionInfo,
-            "GPT participant microphone changed.");
+        if (!await _muteGate.WaitAsync(0)) return;
+        try
+        {
+            ToggleMuteButton.IsEnabled = false;
+            await ExecuteAsync(
+                async () => { await _client.SendAsync("participant.mic.toggle"); },
+                SessionInfo,
+                "GPT participant microphone changed.",
+                // A hotkey or tray toggle usually runs with the window hidden, so a failed
+                // mute has to reach the user instead of only the InfoBar behind the tray.
+                fromBackground ? "GPT mute did not change" : null);
+        }
+        finally
+        {
+            ToggleMuteButton.IsEnabled = true;
+            _muteGate.Release();
+        }
     }
 
     private async void StartSession_Click(object sender, RoutedEventArgs e)
@@ -207,6 +241,7 @@ public sealed partial class MainWindow : Window
             $"Source: {_client.RepoRoot}",
             $"Runtime: {_client.RuntimeDirectory}",
             $"Microphone privacy: {privacy}",
+            $"Tray icon: {(_native?.TrayIconVisible == true ? "registered" : "not registered — retrying")}",
             $"Credential helper: {(File.Exists(Path.Combine(_client.RepoRoot, "native", "windows", "target", "release", "meetron-credential.exe")) ? "present" : "missing")}",
             $"Native host helper: {(File.Exists(Path.Combine(_client.RepoRoot, "native", "windows", "target", "release", "meetron-host.exe")) ? "present" : "missing")}",
         };
