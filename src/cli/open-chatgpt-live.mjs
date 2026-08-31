@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import {
   cliError,
+  configurationPath,
   loadEnvironment,
   platform,
   platformPaths,
@@ -54,6 +55,7 @@ runMain(async () => {
     platformId: platform.id,
     repoRoot,
     env,
+    envPath: configurationPath,
   });
   if (!/^https:\/\/chatgpt\.com\/g\/g-p-[^/]+\/project/.test(projectUrl)) {
     throw cliError("Configure a ChatGPT Project landing URL before opening ChatGPT Live.");

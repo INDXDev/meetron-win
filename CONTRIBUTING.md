@@ -13,8 +13,14 @@ npm test
 
 Windows shell changes must also keep the unpackaged WinUI 3 build and focused
 shell-state tests green. `npm run build:windows` and `npm run test:windows`
-include both automatically. MSIX packaging, signing, startup registration, and
-updates are intentionally not part of the Phase 2 source build.
+include both automatically.
+
+Windows package changes must additionally create and verify an unsigned local
+artifact with `npm run package:windows:local` and
+`npm run verify:windows-package -- --allow-unsigned ...`. Release mode must stay
+fail closed: a clean tree, exact certificate publisher, HSM-backed signing,
+timestamped inner/outer signatures, and adjacent checksums are mandatory. See
+[`docs/windows-packaging.md`](docs/windows-packaging.md).
 
 Native audio source changes additionally require:
 
@@ -43,6 +49,11 @@ is an automation limitation, not provider quality evidence; record RTP evidence
 and complete the documented real-browser listening run instead.
 
 The one-click updater deliberately updates the existing checkout path so both Chrome profiles keep their unpacked-extension registration. It must preserve `.git`, `.meeting-copilot.env`, `.meeting-copilot-runtime`, and dedicated profile data; abort on tracked Git changes; and keep a working BlackHole or legacy custom backend instead of forcing the Meetron Audio PKG. Add migration coverage to `tests/updater-test.mjs` for every updater behavior change.
+
+On Windows the same rule covers `%LOCALAPPDATA%\Meetron`, the dedicated Chrome
+profile and `Local State` login file, Credential Manager values, and the stable
+extension identity. Never test package removal or profile deletion against a
+real user profile.
 
 ## Architecture and meeting providers
 

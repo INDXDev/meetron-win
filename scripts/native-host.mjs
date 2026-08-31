@@ -45,7 +45,7 @@ import {
   normalizeProjectUrl,
   saveProjectUrl as persistProjectUrl,
 } from "../src/platform/project-settings.mjs";
-import { loadEnvironment } from "../src/cli/cli-utils.mjs";
+import { configurationPath, loadEnvironment } from "../src/cli/cli-utils.mjs";
 
 const EXTENSION_ID = "jlikakgdldiihhflkobhnpfegjlcakdd";
 const EXPECTED_ORIGIN = `chrome-extension://${EXTENSION_ID}/`;
@@ -57,7 +57,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // MEETING_COPILOT_PROFILE_DIR and MEETING_COPILOT_RUNTIME_DIR must be loaded
 // here. Without this the host resolves default paths while the CLI commands it
 // spawns resolve the configured ones.
-Object.assign(process.env, loadEnvironment(resolve(repoRoot, ".meeting-copilot.env")));
+Object.assign(process.env, loadEnvironment(configurationPath));
 const platformAdapter = getPlatformAdapter();
 const platformPaths = platformAdapter.paths.resolve({
   repoRoot,
@@ -72,7 +72,7 @@ const meetingLogPath = resolve(runtimeDir, "meeting-launch.log");
 const micStatePath = resolve(runtimeDir, "meet-mic.json");
 const setupStatePath = resolve(runtimeDir, "setup.json");
 const visualContextLogPath = resolve(runtimeDir, "visual-context.log");
-const envPath = resolve(repoRoot, ".meeting-copilot.env");
+const envPath = configurationPath;
 const dedicatedProfileDir = platformPaths.dedicatedProfileDir;
 process.env.MEETING_COPILOT_RUNTIME_DIR ||= runtimeDir;
 process.env.MEETING_COPILOT_PROFILE_DIR ||= dedicatedProfileDir;

@@ -22,5 +22,14 @@ Include the affected version, macOS and Chrome versions, reproduction steps, imp
 - The shared dedicated Chrome profile should be used only for Meetron. Anyone with access to the same macOS account can inspect that profile and local runtime files.
 - Google Meet, Zoom Web App, and ChatGPT Web are automated through their user interfaces. Upstream UI changes can cause a fail-closed launch or require code updates.
 - The virtual audio plug-ins run inside the macOS Core Audio service. Release bundles must use Developer ID signing and notarization; ad-hoc signing is for local source builds only.
+- Windows release EXE/DLL files and the enclosing MSIX are Authenticode-signed
+  through the protected HSM-backed release workflow and timestamped with
+  SHA-256. Release verification rejects unsigned, untrusted, publisher-mismatched,
+  modified, or `LOCAL-TEST` artifacts. The adjacent checksum is an additional
+  transport check; it does not replace signature verification.
+- Windows mutable state and the dedicated Chrome profile remain under
+  `%LOCALAPPDATA%\Meetron`, outside the immutable MSIX. In-place package updates
+  must not delete or rewrite Chrome `Local State`, cookies, or Credential Manager
+  values.
 
 Before using this software with confidential meetings, review the source, organizational policy, participant-consent requirements, and the data controls of every connected service.

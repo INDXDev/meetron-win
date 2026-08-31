@@ -4,6 +4,10 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: macOS / Windows](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](#動作環境)
 
+Windows Phase 4 packaging, HSM-backed signing, local unsigned testing, and
+profile-preserving update procedures are documented in
+[`docs/windows-packaging.md`](docs/windows-packaging.md).
+
 ChatGPT Web Voiceを、Google Meetまたは任意のZoom Web Appへ`GPT-Live`という別参加者として接続するmacOS / Windows向けの実験的ベータ版です。OpenAI APIは使わず、仮想音声デバイスで会議音声とChatGPT音声を双方向に橋渡しします。既定はGoogle Meetで、Zoom対応はベータ機能です。
 
 このプロジェクトは非公式であり、OpenAI、Apple、Google、Zoomの提供・承認を受けた製品ではありません。ChatGPT、Google Meet、Zoomの画面変更により、自動化が動かなくなる可能性があります。

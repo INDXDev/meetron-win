@@ -28,10 +28,17 @@ import {
   waitForChild,
 } from "./cli-utils.mjs";
 
-const usage = `Usage: node src/cli/update-meetron.mjs [--dry-run] [--target DIRECTORY]
+const usage = `Usage: node src/cli/update-meetron.mjs [options]
 
 Updates an existing Meetron source installation in place so Chrome keeps the
 same unpacked-extension path. Local configuration and runtime state are preserved.
+
+Options:
+  --target DIRECTORY       Override the detected live source installation.
+  --package MSIX           Verify and install a signed Windows package update.
+  --publisher SUBJECT      Expected Windows release certificate subject.
+  --allow-test-certificate Accept only the dedicated local-test certificate.
+  --dry-run                Validate without changing the installation.
 `;
 const excludedTopLevel = new Set([
   ".git", "node_modules", "docs", "dist", ".meeting-copilot.env", ".meeting-copilot-runtime",
@@ -74,8 +81,12 @@ function targetFromManifest(path) {
   try {
     const manifest = JSON.parse(readFileSync(path, "utf8"));
     if (manifest.name !== "com.meeting_copilot.host" || typeof manifest.path !== "string") return "";
-    const candidate = resolve(dirname(manifest.path), "..");
-    return validTarget(candidate) ? candidate : "";
+    const directCandidate = resolve(dirname(manifest.path), "..");
+    if (validTarget(directCandidate)) return directCandidate;
+    const config = readFileSync(resolve(dirname(manifest.path), "meetron-host.conf"), "utf8").split(/\r?\n/);
+    const script = config[1] || "";
+    const configuredCandidate = script ? resolve(dirname(script), "..") : "";
+    return configuredCandidate && validTarget(configuredCandidate) ? configuredCandidate : "";
   } catch { return ""; }
 }
 
@@ -127,6 +138,9 @@ async function installedPackageVersion(receiptId) {
 
 runMain(async () => {
   let targetOverride = process.env.MEETRON_UPDATE_TARGET || "";
+  let windowsPackagePath = "";
+  let publisher = "";
+  let allowTestCertificate = false;
   let dryRun = false;
   const args = process.argv.slice(2);
   for (let index = 0; index < args.length; index += 1) {
@@ -134,10 +148,29 @@ runMain(async () => {
     if (["-h", "--help"].includes(argument)) { process.stdout.write(usage); return; }
     if (argument === "--dry-run") dryRun = true;
     else if (argument === "--target") targetOverride = args[++index] || "";
+    // The child installer runs with cwd set to repoRoot, so a relative package
+    // path has to be anchored to the caller's directory here.
+    else if (argument === "--package") windowsPackagePath = args[++index] ? resolve(args[index]) : "";
+    else if (argument === "--publisher") publisher = args[++index] || "";
+    else if (argument === "--allow-test-certificate") allowTestCertificate = true;
     else throw cliError(`Unknown option: ${argument}\n${usage}`);
   }
   const nodeMajor = Number(process.versions.node.split(".")[0]);
   if (![22, 24].includes(nodeMajor)) throw cliError(`[ERROR] Node.js 22 or 24 LTS is required to update Meetron (found ${process.version}).`, 1);
+  if (windowsPackagePath || publisher || allowTestCertificate) {
+    if (platform.id !== "win32" || !windowsPackagePath || !publisher) {
+      throw cliError("[ERROR] --package and --publisher must be supplied together on Windows.", 1);
+    }
+    const installArgs = ["--package", windowsPackagePath, "--publisher", publisher];
+    if (dryRun) installArgs.push("--dry-run");
+    if (allowTestCertificate) installArgs.push("--allow-test-certificate");
+    await waitForChild(spawnNode(resolve(repoRoot, "src/cli/install-windows-package.mjs"), installArgs));
+    return;
+  }
+  if (platform.id === "win32" && process.env.MEETRON_PACKAGED === "1" && !targetOverride) {
+    process.stdout.write("Meetron Windows updater\n=======================\nThis MSIX is associated with its HTTPS App Installer feed. Windows checks that feed when Meetron launches and applies a higher package version in place, accepting only a package Windows can verify against the same signing certificate.\nFor an offline update, pass --package PATH --publisher CERTIFICATE_SUBJECT.\n");
+    return;
+  }
   const sourceVersion = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).version;
   let targetRoot = "";
   if (targetOverride) {
@@ -166,7 +199,9 @@ runMain(async () => {
   }
   if (dryRun) { process.stdout.write("[DRY RUN] Existing installation is safe to update in place.\n"); return; }
   if (repoRoot !== targetRoot) {
-    const backupBase = resolve(process.env.MEETRON_UPDATE_BACKUP_DIR || resolve(safeHome, "Library/Application Support/Meetron/Backups"));
+    const backupBase = resolve(process.env.MEETRON_UPDATE_BACKUP_DIR || (platform.id === "win32"
+      ? resolve(process.env.LOCALAPPDATA || safeHome, "Meetron/Backups")
+      : resolve(safeHome, "Library/Application Support/Meetron/Backups")));
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/T/, "-").slice(0, 15);
     const backupRoot = resolve(backupBase, stamp);
     copyTree(targetRoot, backupRoot);
@@ -186,6 +221,10 @@ runMain(async () => {
     await waitForChild(spawnNode(resolve(targetRoot, "src/cli/install-control-ui.mjs"), ["--quiet"], { cwd: targetRoot }));
     process.stdout.write("[OK] Dependencies and Native Messaging Host were updated.\n");
   } else process.stdout.write("[TEST] Dependency and Native Host installation skipped.\n");
+  if (platform.id === "win32") {
+    process.stdout.write(`\nMeetron ${sourceVersion} was updated successfully.\nThe dedicated Chrome profile remains at ${platform.paths.resolve({ repoRoot: targetRoot, home: safeHome, env: process.env }).dedicatedProfileDir}.\nQuit and reopen Google Chrome to load extension version ${sourceVersion}.\n`);
+    return;
+  }
   const requiredAudioVersion = process.env.MEETRON_UPDATE_AUDIO_VERSION || "0.1.2";
   const installedAudio = process.env.MEETRON_UPDATE_INSTALLED_AUDIO_VERSION === "none"
     ? ""

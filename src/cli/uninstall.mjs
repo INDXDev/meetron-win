@@ -8,6 +8,7 @@ import { getCredentialStore } from "../platform/credential-store-registry.mjs";
 import { PROJECT_URL_CREDENTIAL } from "../platform/project-settings.mjs";
 import {
   cliError,
+  configurationPath,
   platform,
   repoRoot,
   run,
@@ -105,11 +106,12 @@ runMain(async () => {
         process.stderr.write(`Could not remove the Windows Credential Manager entry: ${error.message}\n`);
       }
       rmSync(resolve(dirname(runtimeDir), "shell-settings.json"), { force: true });
+      rmSync(resolve(dirname(runtimeDir), "Extension"), { recursive: true, force: true });
     }
     for (const target of [runtimeDir, paths.dedicatedProfileDir, paths.legacyProfileDir]) {
       rmSync(target, { recursive: true, force: true });
     }
-    rmSync(resolve(repoRoot, ".meeting-copilot.env"), { force: true });
+    rmSync(configurationPath, { force: true });
     process.stdout.write("Removed Meetron local data and dedicated Chrome profiles.\n");
   }
   process.stdout.write("Remove Meetron Controls from Chrome in chrome://extensions.\n");

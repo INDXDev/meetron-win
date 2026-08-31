@@ -7,11 +7,15 @@ internal sealed class MeetronClient
 {
     private readonly string _nodePath;
     private readonly string _bridgePath;
+    private readonly bool _packaged;
 
     public MeetronClient()
     {
         RepoRoot = FindRepoRoot();
-        _nodePath = Environment.GetEnvironmentVariable("MEETING_COPILOT_NODE_PATH") ?? "node.exe";
+        var bundledNode = Path.Combine(RepoRoot, "runtime", "node.exe");
+        _packaged = File.Exists(bundledNode);
+        _nodePath = Environment.GetEnvironmentVariable("MEETING_COPILOT_NODE_PATH") ??
+            (File.Exists(bundledNode) ? bundledNode : "node.exe");
         _bridgePath = Path.Combine(RepoRoot, "src", "cli", "windows-shell-command.mjs");
         RuntimeDirectory = Environment.GetEnvironmentVariable("MEETING_COPILOT_RUNTIME_DIR") ??
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Meetron", "Runtime");
@@ -19,6 +23,7 @@ internal sealed class MeetronClient
 
     public string RepoRoot { get; }
     public string RuntimeDirectory { get; }
+    public bool IsPackaged => _packaged;
 
     public async Task<JsonElement> SendAsync(string type, object? payload = null, int timeoutSeconds = 45)
     {
@@ -66,6 +71,7 @@ internal sealed class MeetronClient
         };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         start.Environment["MEETRON_PLATFORM"] = "win32";
+        if (_packaged) start.Environment["MEETRON_PACKAGED"] = "1";
         using var process = Process.Start(start) ?? throw new InvalidOperationException($"Could not start {executable}");
         if (stdin is not null)
         {
