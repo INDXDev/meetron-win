@@ -114,29 +114,45 @@ function snapshotProfile(path) {
   };
 }
 
-async function waitForPackagedIntegration(paths, installedRoot, timeoutMs = 60_000) {
+async function waitForPackagedIntegration(paths, installedRoot, timeoutMs = 180_000) {
   const manifestPath = resolve(paths.nativeMessagingManifestDirs[0], NATIVE_HOST_MANIFEST);
   const expectedLauncher = platform.nativeHost.launcherPath({ runtimeDir: paths.runtimeDir });
   const configurationPath = resolve(paths.runtimeDir, "meetron-host.conf");
+  const crashPath = resolve(paths.runtimeDir, "windows-shell-crash.log");
   const registry = resolve(process.env.SystemRoot || process.env.WINDIR || "C:\\Windows", "System32/reg.exe");
   const deadline = Date.now() + timeoutMs;
+  let reason = "the packaged shell wrote none of the integration files";
   while (Date.now() < deadline) {
     try {
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       const configuration = readFileSync(configurationPath, "utf8");
       const registered = await run(registry, ["query", NATIVE_HOST_REGISTRY_KEY, "/ve"], { timeout: 5_000 });
-      if (
-        resolve(manifest.path).toLowerCase() === resolve(expectedLauncher).toLowerCase()
-        && statSync(expectedLauncher, { throwIfNoEntry: false })?.isFile()
-        && configuration.toLowerCase().includes(resolve(installedRoot).toLowerCase())
-        && registered.stdout.toLowerCase().includes(resolve(manifestPath).toLowerCase())
-      ) return;
-    } catch {
-      // The packaged shell refreshes these files asynchronously after activation.
+      if (resolve(manifest.path).toLowerCase() !== resolve(expectedLauncher).toLowerCase()) {
+        reason = `the manifest points at ${manifest.path} instead of ${expectedLauncher}`;
+      } else if (!statSync(expectedLauncher, { throwIfNoEntry: false })?.isFile()) {
+        reason = `the launcher was not installed at ${expectedLauncher}`;
+      } else if (!configuration.toLowerCase().includes(resolve(installedRoot).toLowerCase())) {
+        reason = `meetron-host.conf does not reference the install location ${installedRoot}`;
+      } else if (!registered.stdout.toLowerCase().includes(resolve(manifestPath).toLowerCase())) {
+        reason = `${NATIVE_HOST_REGISTRY_KEY} does not point at ${manifestPath}`;
+      } else return;
+    } catch (error) {
+      // The packaged shell refreshes these files asynchronously after activation,
+      // so a read failing is expected until it finishes -- but if it never
+      // finishes, the last failure is the only description of what is missing.
+      reason = error?.message || String(error);
     }
     await delay(250);
   }
-  throw cliError("[ERROR] Packaged Native Messaging refresh did not complete within 60 seconds.", 1);
+  // App.OnLaunched swallows an integration failure into this log, so it is the
+  // only place a crash in the packaged shell is visible from here.
+  const crash = statSync(crashPath, { throwIfNoEntry: false })?.isFile()
+    ? `\n${readFileSync(crashPath, "utf8").trim()}`
+    : "";
+  throw cliError(
+    `[ERROR] Packaged Native Messaging refresh did not complete within ${Math.round(timeoutMs / 1000)} seconds: ${reason}.${crash}`,
+    1,
+  );
 }
 
 runMain(async () => {

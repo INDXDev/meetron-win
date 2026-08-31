@@ -116,7 +116,11 @@ try {
   assert.match(packageInstaller, /Package activation returned no process ID/);
   assert.doesNotMatch(packageInstaller, /shell:AppsFolder/);
   assert.match(packageInstaller, /waitForPackagedIntegration/);
-  assert.match(packageInstaller, /Packaged Native Messaging refresh did not complete within 60 seconds/);
+  assert.match(packageInstaller, /Packaged Native Messaging refresh did not complete within/);
+  // The packaged shell budgets 120s for the refresh this waits on, so a
+  // shorter deadline here reports a timeout for work still allowed to run.
+  assert.match(packageInstaller, /timeoutMs = 180_000/);
+  assert.match(packageInstaller, /windows-shell-crash\.log/);
   assert.doesNotMatch(packageInstaller, /await run\(resolve\(installedRoot, "runtime\/node\.exe"\)/);
   if (process.platform === "win32") {
     const activatorSource = packageInstaller.match(/const PACKAGE_ACTIVATOR_SOURCE = String\.raw`\r?\n([\s\S]*?)`;/)?.[1];
