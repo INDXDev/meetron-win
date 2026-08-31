@@ -3,6 +3,8 @@
 import { getAudioStatus } from "./audio-backend.mjs";
 import { connectToChromeOverCDP } from "./playwright-cdp.mjs";
 import {
+  classifyLoopbackFailures,
+  describeLoopbackFailures,
   installWebRtcLoopbackPage,
   WEBRTC_LOOPBACK_BACKEND_ID,
 } from "../src/audio/webrtc-loopback-page.mjs";
@@ -88,52 +90,17 @@ await context.grantPermissions(["microphone"], {
 });
 
 if (driverless) {
-  await context.addInitScript(installWebRtcLoopbackPage, { role: "chatgpt" });
+  // The same guard in reverse: the meeting tab shares this context and must
+  // never receive the chatgpt role.
+  await context.addInitScript(installWebRtcLoopbackPage, {
+    role: "chatgpt",
+    hostnames: ["chatgpt.com"],
+  });
 }
 
 const existingChatgptPages = context
   .pages()
   .filter((candidate) => candidate.url().startsWith("https://chatgpt.com/"));
-
-let routingProbe;
-let temporaryProbe = false;
-let inputDevice = { deviceId: "", label: options.inputDevice };
-let outputDevice = { deviceId: "", label: options.outputDevice };
-if (!driverless) {
-  routingProbe = existingChatgptPages[0];
-  if (!routingProbe) {
-  routingProbe = await context.newPage();
-  temporaryProbe = true;
-  await routingProbe.goto(options.projectUrl, { waitUntil: "domcontentloaded" });
-  } else {
-    await routingProbe.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => {});
-  }
-
-const routingDevices = await routingProbe.evaluate(async ({ inputName, outputName }) => {
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const findDevice = (kind, targetName) => {
-    const normalizedTarget = targetName.trim().toLowerCase();
-    const target = devices.find((device) =>
-      device.kind === kind && device.label.trim().toLowerCase().startsWith(normalizedTarget),
-    );
-    return target ? { deviceId: target.deviceId, label: target.label } : null;
-  };
-  return {
-    input: findDevice("audioinput", inputName),
-    output: findDevice("audiooutput", outputName),
-  };
-}, { inputName: options.inputDevice, outputName: options.outputDevice });
-
-  inputDevice = routingDevices.input;
-  outputDevice = routingDevices.output;
-
-if (!inputDevice) {
-  throw new Error(`ChatGPT Voice input device was not found: ${options.inputDevice}`);
-}
-
-if (!outputDevice) {
-  throw new Error(`ChatGPT Voice output device was not found: ${options.outputDevice}`);
-}
 
 function normalizedDeviceName(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -224,6 +191,46 @@ async function inspectChromeAudioOutputs(
     await internalPage?.close({ runBeforeUnload: false }).catch(() => {});
     await session.detach().catch(() => {});
   }
+}
+
+let routingProbe;
+let temporaryProbe = false;
+let inputDevice = { deviceId: "", label: options.inputDevice };
+let outputDevice = { deviceId: "", label: options.outputDevice };
+if (!driverless) {
+  routingProbe = existingChatgptPages[0];
+  if (!routingProbe) {
+  routingProbe = await context.newPage();
+  temporaryProbe = true;
+  await routingProbe.goto(options.projectUrl, { waitUntil: "domcontentloaded" });
+  } else {
+    await routingProbe.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => {});
+  }
+
+const routingDevices = await routingProbe.evaluate(async ({ inputName, outputName }) => {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const findDevice = (kind, targetName) => {
+    const normalizedTarget = targetName.trim().toLowerCase();
+    const target = devices.find((device) =>
+      device.kind === kind && device.label.trim().toLowerCase().startsWith(normalizedTarget),
+    );
+    return target ? { deviceId: target.deviceId, label: target.label } : null;
+  };
+  return {
+    input: findDevice("audioinput", inputName),
+    output: findDevice("audiooutput", outputName),
+  };
+}, { inputName: options.inputDevice, outputName: options.outputDevice });
+
+  inputDevice = routingDevices.input;
+  outputDevice = routingDevices.output;
+
+if (!inputDevice) {
+  throw new Error(`ChatGPT Voice input device was not found: ${options.inputDevice}`);
+}
+
+if (!outputDevice) {
+  throw new Error(`ChatGPT Voice output device was not found: ${options.outputDevice}`);
 }
 
 await context.addInitScript(({ inputDeviceId, inputLabel, sinkId, outputLabel }) => {
@@ -470,9 +477,13 @@ try {
         processing: state.processing,
       };
     });
-    if (!loopback || loopback.failures.length > 0) {
+    // A benign failure such as a capture-media-element rejection on an
+    // unrelated <audio> element must not abort the session; only the fatal
+    // stages (input track, peer establishment, output capture) may.
+    const loopbackFailures = classifyLoopbackFailures(loopback?.failures);
+    if (!loopback || loopbackFailures.fatal.length > 0) {
       throw new Error(
-        `ChatGPT WebRTC loopback initialization failed: ${loopback?.failures.map((failure) => failure.message).join(" / ") || "missing state"}`,
+        `ChatGPT WebRTC loopback initialization failed: ${describeLoopbackFailures(loopbackFailures.fatal) || "missing state"}`,
       );
     }
     audioInput = {
@@ -488,7 +499,8 @@ try {
       connectionState: loopback.connectionState,
       mediaElements: loopback.outputSources,
       audioContexts: loopback.outputContexts,
-      failures: [],
+      failures: loopbackFailures.fatal,
+      benignFailures: loopbackFailures.benign,
     };
     internalAudioOutput = {
       checked: false,

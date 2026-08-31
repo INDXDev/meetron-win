@@ -12,14 +12,19 @@ internal sealed class NativeWindowController : IDisposable
     private const uint ModNoRepeat = 0x4000;
     private const uint VkM = 0x4D;
     private const uint WmHotkey = 0x0312;
+    private const uint WmTimer = 0x0113;
     private const uint WmLButtonUp = 0x0202;
     private const uint WmContextMenu = 0x007B;
+    private const uint NinSelect = 0x0400;
+    private const uint NinKeySelect = 0x0401;
     private const uint NifMessage = 0x0001;
     private const uint NifIcon = 0x0002;
     private const uint NifTip = 0x0004;
     private const uint NimAdd = 0;
     private const uint NimModify = 1;
     private const uint NimDelete = 2;
+    private const uint NimSetVersion = 4;
+    private const uint NotifyIconVersion4 = 4;
     private const uint IdiApplication = 32512;
     private const uint IdiInformation = 32516;
     private const uint IdiWarning = 32515;
@@ -28,12 +33,23 @@ internal sealed class NativeWindowController : IDisposable
     private const uint TpmReturnCmd = 0x0100;
     private const uint TpmRightButton = 0x0002;
     private const int GwlpWndProc = -4;
-    private static readonly nint HwndMessage = new(-3);
+    private const int TrayRetryTimerId = 1;
+    private const uint TrayRetryIntervalMs = 2_000;
+    private const int TrayRetryLimit = 30;
+    private const uint WsExToolWindow = 0x0080;
 
     private readonly nint _owner;
     private readonly WindowProc _windowProc;
     private readonly nint _messageWindow;
     private readonly nint _oldWindowProc;
+    // Explorer broadcasts this message once the notification area is ready, both at
+    // sign-in and after every Explorer restart.
+    private readonly uint _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
+    private string _trayTooltip = "Meetron — starting";
+    private uint _trayIcon = IdiApplication;
+    private bool _trayIconAdded;
+    private bool _trayRetryScheduled;
+    private int _trayRetries;
     private bool _hotkeyRegistered;
     private bool _disposed;
 
@@ -41,17 +57,22 @@ internal sealed class NativeWindowController : IDisposable
     {
         _owner = owner;
         _windowProc = MessageWindowProc;
-        _messageWindow = CreateWindowEx(0, "STATIC", "MeetronShellMessages", 0, 0, 0, 0, 0,
-            HwndMessage, 0, 0, 0);
+        // Top level rather than HWND_MESSAGE on purpose: a message-only window is not
+        // reachable by broadcasts, so it would never see the TaskbarCreated that tells
+        // the shell to put its icon back. The window stays hidden (no WS_VISIBLE) and
+        // WS_EX_TOOLWINDOW keeps it out of the taskbar and the Alt+Tab list.
+        _messageWindow = CreateWindowEx(WsExToolWindow, "STATIC", "MeetronShellMessages", 0, 0, 0, 0, 0,
+            0, 0, 0, 0);
         if (_messageWindow == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
         _oldWindowProc = SetWindowLongPtr(_messageWindow, GwlpWndProc, Marshal.GetFunctionPointerForDelegate(_windowProc));
-        AddTrayIcon("Meetron — starting", IdiApplication);
+        EnsureTrayIcon();
     }
 
     public event Action? ShowRequested;
     public event Action? ToggleMuteRequested;
     public event Action? ExitRequested;
     public bool HotkeyRegistered => _hotkeyRegistered;
+    public bool TrayIconVisible => _trayIconAdded;
 
     public void SetHotkeyEnabled(bool enabled)
     {
@@ -68,18 +89,60 @@ internal sealed class NativeWindowController : IDisposable
 
     public void Update(ShellSnapshot snapshot)
     {
-        var icon = !snapshot.HostConnected ? IdiError
+        _trayIcon = !snapshot.HostConnected ? IdiError
             : snapshot.VoiceActive && snapshot.MeetingConnection == "joined" ? IdiInformation
             : snapshot.SessionActive || snapshot.SessionStatus == "completed" ? IdiWarning
             : IdiApplication;
-        var data = CreateData(snapshot.TrayText, icon);
-        Shell_NotifyIcon(NimModify, ref data);
+        _trayTooltip = snapshot.TrayText;
+        if (!_trayIconAdded)
+        {
+            EnsureTrayIcon();
+            return;
+        }
+        var data = CreateData(_trayTooltip, _trayIcon);
+        // A failed NIM_MODIFY means the icon is gone — a TaskbarCreated broadcast that
+        // arrived before the window existed, for example. Re-adding it beats leaving a
+        // hidden window with a permanently stale tray entry as its only way back.
+        if (!Shell_NotifyIcon(NimModify, ref data))
+        {
+            _trayIconAdded = false;
+            EnsureTrayIcon();
+        }
     }
 
-    private void AddTrayIcon(string tooltip, uint icon)
+    // Registration legitimately fails when the shell starts before the taskbar owns the
+    // notification area, which is the normal case for a startup task after sign-in and
+    // during an Explorer restart. Losing the icon must never take the app down, so the
+    // failure is retried and every TaskbarCreated broadcast re-adds the icon.
+    private void EnsureTrayIcon()
     {
-        var data = CreateData(tooltip, icon);
-        if (!Shell_NotifyIcon(NimAdd, ref data)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        if (_trayIconAdded || _disposed) return;
+        if (TryAddTrayIcon()) return;
+        if (_trayRetryScheduled) return;
+        _trayRetries = 0;
+        _trayRetryScheduled = SetTimer(_messageWindow, (nint)TrayRetryTimerId, TrayRetryIntervalMs, 0) != 0;
+    }
+
+    private bool TryAddTrayIcon()
+    {
+        if (_disposed) return false;
+        var data = CreateData(_trayTooltip, _trayIcon);
+        if (!Shell_NotifyIcon(NimAdd, ref data)) return false;
+        // Without NIM_SETVERSION the icon stays on the legacy callback contract, which
+        // never delivers WM_CONTEXTMENU and so would leave the tray menu unreachable.
+        var version = CreateData(_trayTooltip, _trayIcon);
+        version.uTimeoutOrVersion = NotifyIconVersion4;
+        Shell_NotifyIcon(NimSetVersion, ref version);
+        _trayIconAdded = true;
+        StopTrayRetry();
+        return true;
+    }
+
+    private void StopTrayRetry()
+    {
+        if (!_trayRetryScheduled) return;
+        _trayRetryScheduled = false;
+        KillTimer(_messageWindow, (nint)TrayRetryTimerId);
     }
 
     private NotifyIconData CreateData(string tooltip, uint icon) => new()
@@ -97,6 +160,20 @@ internal sealed class NativeWindowController : IDisposable
 
     private nint MessageWindowProc(nint window, uint message, nint wParam, nint lParam)
     {
+        if (_taskbarCreated != 0 && message == _taskbarCreated)
+        {
+            // Explorer drops every icon it was showing when it restarts, so the previous
+            // registration is gone even though NIM_DELETE was never called.
+            _trayIconAdded = false;
+            EnsureTrayIcon();
+            return CallWindowProc(_oldWindowProc, window, message, wParam, lParam);
+        }
+        if (message == WmTimer && wParam.ToInt32() == TrayRetryTimerId)
+        {
+            _trayRetries += 1;
+            if (TryAddTrayIcon() || _trayRetries >= TrayRetryLimit) StopTrayRetry();
+            return 0;
+        }
         if (message == WmHotkey && wParam.ToInt32() == HotkeyId)
         {
             ToggleMuteRequested?.Invoke();
@@ -105,7 +182,7 @@ internal sealed class NativeWindowController : IDisposable
         if (message == TrayMessage)
         {
             var action = (uint)(lParam.ToInt64() & 0xFFFF);
-            if (action == WmLButtonUp) ShowRequested?.Invoke();
+            if (action is WmLButtonUp or NinSelect or NinKeySelect) ShowRequested?.Invoke();
             if (action == WmContextMenu) ShowTrayMenu();
             return 0;
         }
@@ -139,8 +216,13 @@ internal sealed class NativeWindowController : IDisposable
         if (_disposed) return;
         _disposed = true;
         SetHotkeyEnabled(false);
-        var data = CreateData("", IdiApplication);
-        Shell_NotifyIcon(NimDelete, ref data);
+        StopTrayRetry();
+        if (_trayIconAdded)
+        {
+            _trayIconAdded = false;
+            var data = CreateData("", IdiApplication);
+            Shell_NotifyIcon(NimDelete, ref data);
+        }
         if (_messageWindow != 0) DestroyWindow(_messageWindow);
         GC.KeepAlive(_windowProc);
     }
@@ -187,4 +269,9 @@ internal sealed class NativeWindowController : IDisposable
     [DllImport("user32.dll")] private static extern bool DestroyMenu(nint menu);
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint window);
+    [DllImport("user32.dll", EntryPoint = "RegisterWindowMessageW", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string message);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern nint SetTimer(nint window, nint eventId, uint elapse, nint callback);
+    [DllImport("user32.dll")] private static extern bool KillTimer(nint window, nint eventId);
 }

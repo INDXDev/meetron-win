@@ -6,6 +6,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, posix, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
   assertResolvedPlatformPaths,
@@ -195,7 +196,10 @@ export const macosPlatformAdapter = definePlatformAdapter({
     },
     installLauncher({ runtimeDir, nodePath, scriptPath }) {
       const launcherPath = resolve(runtimeDir, "native-host.mjs");
-      writeFileSync(launcherPath, `#!${nodePath}\nimport ${JSON.stringify(scriptPath)};\n`, {
+      // The import specifier is resolved as a URL, so a bare file system path
+      // breaks for a checkout whose path contains "#", "?", or "%".
+      const specifier = pathToFileURL(scriptPath).href;
+      writeFileSync(launcherPath, `#!${nodePath}\nimport ${JSON.stringify(specifier)};\n`, {
         mode: 0o700,
       });
       chmodSync(launcherPath, 0o700);

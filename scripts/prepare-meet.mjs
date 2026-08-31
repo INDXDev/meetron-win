@@ -14,7 +14,10 @@ import {
   resolveMeetingAudioDevices,
 } from "../src/audio/meeting-audio-devices.mjs";
 import {
+  classifyLoopbackFailures,
+  describeLoopbackFailures,
   installWebRtcLoopbackPage,
+  waitForWebRtcLoopbackPairing,
   WEBRTC_LOOPBACK_BACKEND_ID,
 } from "../src/audio/webrtc-loopback-page.mjs";
 import {
@@ -60,7 +63,12 @@ if (driverless) {
 const browser = await connectToChromeOverCDP(options.cdp);
 const context = await firstBrowserContext(browser);
 if (driverless) {
-  await context.addInitScript(installWebRtcLoopbackPage, { role: "meeting" });
+  // Context-level init scripts run on every page in the dedicated Chrome
+  // profile, including the ChatGPT tab, so this role must be pinned to Meet.
+  await context.addInitScript(installWebRtcLoopbackPage, {
+    role: "meeting",
+    hostnames: ["meet.google.com"],
+  });
 }
 await context.grantPermissions(["microphone"], {
   origin: "https://meet.google.com",
@@ -234,14 +242,7 @@ const resolvedSpeakerDevice = driverless
   : (await speakerButton.getAttribute("aria-label")) || speakerDevice;
 
 if (driverless) {
-  await page.waitForFunction(() =>
-    globalThis.__meetronWebRtcLoopback?.peerReadyMessages > 0,
-  undefined, { timeout: 5_000 }).catch((cause) => {
-    throw new Error(
-      "Meet WebRTC loopback did not pair with the ChatGPT tab through the extension.",
-      { cause },
-    );
-  });
+  await waitForWebRtcLoopbackPairing(page, { label: "Meet" });
 }
 const loopback = driverless
   ? await page.evaluate(() => {
@@ -256,10 +257,17 @@ const loopback = driverless
     };
   })
   : null;
-if (driverless && (!loopback || loopback.failures.length > 0)) {
+// A benign failure such as a capture-media-element rejection on an unrelated
+// <audio> element must not abort the session; only the fatal stages may.
+const loopbackFailures = classifyLoopbackFailures(loopback?.failures);
+if (driverless && (!loopback || loopbackFailures.fatal.length > 0)) {
   throw new Error(
-    `Meet WebRTC loopback initialization failed: ${loopback?.failures.map((failure) => failure.message).join(" / ") || "missing state"}`,
+    `Meet WebRTC loopback initialization failed: ${describeLoopbackFailures(loopbackFailures.fatal) || "missing state"}`,
   );
+}
+if (loopback) {
+  loopback.failures = loopbackFailures.fatal;
+  loopback.benignFailures = loopbackFailures.benign;
 }
 
 let connection = "prejoin";

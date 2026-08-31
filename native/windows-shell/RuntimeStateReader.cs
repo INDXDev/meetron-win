@@ -14,6 +14,9 @@ internal sealed class RuntimeStateReader(string runtimeDirectory)
             ProviderId = launch.GetStringOrDefault("providerId", ""),
             Microphone = microphone.GetStringOrDefault("state", "unavailable"),
             Error = error.Message,
+            // The meeting connection and Voice flags are unknown here, so transitions
+            // must not treat this snapshot as evidence that a session changed state.
+            Degraded = true,
         };
     }
 

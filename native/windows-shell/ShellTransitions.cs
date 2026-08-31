@@ -7,6 +7,12 @@ internal static class ShellTransitions
     public static IReadOnlyList<ShellNotification> Evaluate(ShellSnapshot previous, ShellSnapshot current)
     {
         var notifications = new List<ShellNotification>();
+        if (previous.Degraded || current.Degraded)
+        {
+            // A snapshot rebuilt from runtime files cannot distinguish "no longer in the
+            // meeting" from "the status request failed", so it must not raise alerts.
+            return notifications;
+        }
         if (previous.MeetingConnection != "joined" && current.MeetingConnection == "joined")
         {
             notifications.Add(new(

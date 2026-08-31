@@ -29,6 +29,7 @@ export function invokeNativeHost(request, {
   nodePath = process.execPath,
   hostPath = resolve(repoRoot, "scripts/native-host.mjs"),
   env = process.env,
+  timeoutMs = 120_000,
 } = {}) {
   return new Promise((resolveResult, reject) => {
     const child = platform.process.spawn(nodePath, [hostPath, EXPECTED_ORIGIN], {
@@ -37,24 +38,48 @@ export function invokeNativeHost(request, {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
-    const stdout = [];
+    let stdout = Buffer.alloc(0);
     const stderr = [];
-    child.stdout.on("data", (chunk) => stdout.push(chunk));
-    child.stderr.on("data", (chunk) => stderr.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(cliError(
-          Buffer.concat(stderr).toString("utf8").trim() || `Native Host stopped (${code})`,
-          1,
-        ));
+    let settled = false;
+    // The Native Host keeps its Chrome DevTools connection open, so it does not
+    // exit when stdin closes. Finish as soon as one complete response frame has
+    // arrived and stop the host instead of waiting for it to exit on its own.
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      if (error) reject(error);
+      else resolveResult(value);
+    };
+    const timer = setTimeout(
+      () => finish(cliError("Native Host did not answer in time", 1)),
+      timeoutMs,
+    );
+    timer.unref?.();
+    child.stdout.on("data", (chunk) => {
+      stdout = Buffer.concat([stdout, chunk]);
+      if (stdout.length < 4) return;
+      const length = stdout.readUInt32LE(0);
+      if (length > MAX_MESSAGE_BYTES) {
+        finish(cliError("Native Host returned an invalid response frame", 1));
         return;
       }
+      if (stdout.length < length + 4) return;
       try {
-        resolveResult(decodeNativeMessage(Buffer.concat(stdout)));
+        finish(null, decodeNativeMessage(stdout.subarray(0, length + 4)));
       } catch (error) {
-        reject(error);
+        finish(error);
       }
+    });
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.on("error", (error) => finish(error));
+    child.on("close", (code) => {
+      finish(cliError(
+        Buffer.concat(stderr).toString("utf8").trim() ||
+          (code === 0 ? "Native Host returned no response" : `Native Host stopped (${code})`),
+        1,
+      ));
     });
     child.stdin.on("error", () => {});
     child.stdin.end(encodeNativeMessage(request));
