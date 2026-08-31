@@ -41,6 +41,21 @@ assert.equal(
   ),
   "C:\\Users\\Meetron User\\Meetron Profile",
 );
+// Node quotes the whole argument, not just the value, when a path has a space.
+assert.equal(
+  windowsPlatformInternals.commandLineArgument(
+    '"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" "--user-data-dir=C:\\Users\\Meetron User\\Meetron Profile" --no-first-run',
+    "user-data-dir",
+  ),
+  "C:\\Users\\Meetron User\\Meetron Profile",
+);
+assert.equal(
+  windowsPlatformInternals.commandLineArgument(
+    'chrome.exe --user-data-dir=C:\\Meetron\\Profile --no-first-run',
+    "user-data-dir",
+  ),
+  "C:\\Meetron\\Profile",
+);
 
 const temporary = mkdtempSync(resolve(tmpdir(), "meetron-windows-test-"));
 try {
