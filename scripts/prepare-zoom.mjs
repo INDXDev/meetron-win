@@ -20,7 +20,10 @@ import {
 } from "../src/browser/meeting-browser.mjs";
 import { resolveMeetingAudioDevices } from "../src/audio/meeting-audio-devices.mjs";
 import {
+  classifyLoopbackFailures,
+  describeLoopbackFailures,
   installWebRtcLoopbackPage,
+  waitForWebRtcLoopbackPairing,
   WEBRTC_LOOPBACK_BACKEND_ID,
 } from "../src/audio/webrtc-loopback-page.mjs";
 import {
@@ -80,7 +83,13 @@ let page = [...context.pages()].reverse().find((candidate) => candidate.url() ==
 await closeOtherPages(existingZoomPages, page);
 
 if (driverless) {
-  await context.addInitScript(installWebRtcLoopbackPage, { role: "meeting" });
+  // Context-level init scripts run on every page in the dedicated Chrome
+  // profile, including the ChatGPT tab. Restrict this role to the Zoom origins,
+  // matching the device backend's guard immediately below.
+  await context.addInitScript(installWebRtcLoopbackPage, {
+    role: "meeting",
+    hostnames: [new URL(meeting.url).hostname, "zoom.us"],
+  });
 } else {
 await context.addInitScript(({ inputDeviceId, inputLabel, outputDeviceId, outputLabel }) => {
   if (!(location.hostname === "zoom.us" || location.hostname.endsWith(".zoom.us"))) return;
@@ -369,14 +378,7 @@ await page.waitForFunction((driverlessBackend) => driverlessBackend
   ? Boolean(globalThis.__meetronWebRtcLoopback)
   : Boolean(globalThis.__meetronZoomAudioRouting), driverless, { timeout: 5_000 });
 if (driverless) {
-  await page.waitForFunction(() =>
-    globalThis.__meetronWebRtcLoopback?.peerReadyMessages > 0,
-  undefined, { timeout: 5_000 }).catch((cause) => {
-    throw new Error(
-      "Zoom WebRTC loopback did not pair with the ChatGPT tab through the extension.",
-      { cause },
-    );
-  });
+  await waitForWebRtcLoopbackPairing(page, { label: "Zoom" });
 }
 
 const frame = page;
@@ -664,9 +666,20 @@ const readRouting = async () => {
 let routing = await readRouting();
 const inputRouteFailed = routing?.inputRequests > 0 && routing.inputTracks.length === 0;
 const outputRouteFailed = routing?.outputAttempts > 0 && routing.outputSuccesses === 0;
-if (!routing || inputRouteFailed || outputRouteFailed) {
+// In driverless mode outputAttempts and outputSuccesses are the same counter,
+// so outputRouteFailed can never trip. The peer connection state is the only
+// real signal that the loopback leg died.
+const loopbackRouteFailed = driverless &&
+  ["failed", "closed"].includes(routing?.connectionState);
+// The device hook reports failures as strings, the loopback as {stage,message}
+// objects; joining the objects directly prints "[object Object]". Only the
+// fatal stages describe a broken route — a capture-media-element rejection on
+// an unrelated <audio> element is diagnostic noise, so it is reported
+// separately instead of framing the error.
+const prejoinFailures = classifyLoopbackFailures(routing?.failures);
+if (!routing || inputRouteFailed || outputRouteFailed || loopbackRouteFailed) {
   throw new Error(
-    `Zoom audio input routing hook failed: ${routing?.failures?.join(", ") || "no Meetron input track"} (${JSON.stringify({ page: page.url(), backend: routing?.backend, inputRequests: routing?.inputRequests, inputTrackCount: routing?.inputTracks?.length, outputAttempts: routing?.outputAttempts, outputSuccesses: routing?.outputSuccesses })})`,
+    `Zoom audio input routing hook failed: ${describeLoopbackFailures(prejoinFailures.fatal) || "no Meetron input track"} (${JSON.stringify({ page: page.url(), backend: routing?.backend, connectionState: routing?.connectionState, inputRequests: routing?.inputRequests, inputTrackCount: routing?.inputTracks?.length, outputAttempts: routing?.outputAttempts, outputSuccesses: routing?.outputSuccesses, benignFailures: describeLoopbackFailures(prejoinFailures.benign) })})`,
   );
 }
 
@@ -751,14 +764,34 @@ if (options.join) {
   }
 
   routing = await readRouting();
-  const admittedOutputFailed = routing?.outputAttempts > 0 && routing.outputSuccesses === 0;
+  // Output capture registers only when Zoom attaches its first audio element or
+  // AudioContext, which can lag the admission click by several seconds. Poll
+  // before declaring the meeting -> AI leg dead, so the check below is fatal
+  // without being flaky.
+  if (driverless) {
+    for (let attempt = 0; attempt < 20 && !(routing?.outputSuccesses > 0); attempt += 1) {
+      await page.waitForTimeout(500);
+      routing = await readRouting();
+    }
+  }
+  // Same dead comparison as the pre-join check: driverless outputAttempts and
+  // outputSuccesses are read from the identical expression, so `X > 0 && X === 0`
+  // never trips and a session that captured no output at all (meeting -> AI
+  // silent) used to be reported as healthy. After admission the loopback must
+  // hold at least one captured source and a live peer connection.
+  const admittedFailures = classifyLoopbackFailures(routing?.failures);
+  const admittedOutputFailed = driverless
+    ? !(routing?.outputSuccesses > 0) || ["failed", "closed"].includes(routing?.connectionState)
+    : routing?.outputAttempts > 0 && routing.outputSuccesses === 0;
   if (!routing || admittedOutputFailed) {
     const leave = frame.getByRole("button", { name: /^(退出|Leave|Leave Meeting)$/i });
     if (await clickIfVisible(leave)) {
       await page.waitForTimeout(200);
       await clickIfVisible(frame.getByRole("button", { name: /ミーティングを退出|Leave Meeting/i }));
     }
-    throw new Error(`Zoom audio output routing failed after admission: ${routing?.failures?.join(", ") || "missing"}`);
+    throw new Error(
+      `Zoom audio output routing failed after admission: ${describeLoopbackFailures(admittedFailures.fatal) || "missing"} (${JSON.stringify({ backend: routing?.backend, connectionState: routing?.connectionState, outputSuccesses: routing?.outputSuccesses, benignFailures: describeLoopbackFailures(admittedFailures.benign) })})`,
+    );
   }
 }
 
@@ -775,7 +808,10 @@ process.stdout.write(`${JSON.stringify(createPreparationResult({
   audioRouting: {
     ...routing,
     inputTracks: routing.inputTracks.map(({ label }) => ({ label })),
-    failures: routing.outputSuccesses > 0 ? [] : routing.failures,
+    // Fatal failures would already have thrown; what is left is diagnostic, so
+    // keep it visible rather than blanking it on a healthy output route.
+    failures: routing.outputSuccesses > 0 ? [] : classifyLoopbackFailures(routing.failures).fatal,
+    benignFailures: classifyLoopbackFailures(routing.failures).benign,
   },
 }), null, 2)}\n`);
 process.exit(0);

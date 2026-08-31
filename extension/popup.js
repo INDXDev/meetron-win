@@ -257,13 +257,27 @@ function renderSetup() {
 
   const requiredDevices = setupStatus?.audio?.requiredDevices || {};
   const requiredDeviceNames = setupStatus?.audio?.requiredDeviceNames || Object.keys(requiredDevices);
-  for (const [index, name] of requiredDeviceNames.slice(0, 2).entries()) {
+  // The webrtc-loopback backend routes audio inside Chrome, so it reports no
+  // required devices at all. Without a driverless branch both device rows keep
+  // their placeholder markup ("会議 → AI" / "確認中") forever.
+  const driverlessAudio = setupStatus?.audio?.transport === "webrtc-loopback" ||
+    setupStatus?.audio?.backend === "webrtc-loopback";
+  const deviceRows = driverlessAudio
+    ? [
+      { name: "会議 → AI", ready: true },
+      { name: "AI → 会議", ready: true },
+    ]
+    : requiredDeviceNames.slice(0, 2).map((name) => ({
+      name,
+      ready: requiredDevices[name] === true,
+    }));
+  for (const [index, { name, ready }] of deviceRows.entries()) {
     document.querySelector(`[data-device-name="${index}"]`).textContent = name;
     setCheck(
       document.querySelector(`[data-device-index="${index}"]`),
       document.querySelector(`[data-device-label-index="${index}"]`),
-      requiredDevices[name] === true,
-      "検出済み",
+      ready,
+      driverlessAudio ? "仮想デバイス不要" : "検出済み",
       "未検出",
     );
   }
@@ -271,9 +285,11 @@ function renderSetup() {
     document.querySelector("[data-route-check]"),
     document.querySelector("[data-route-label]"),
     setupStatus?.audio?.ready === true,
-    "設定済み",
+    driverlessAudio ? "ブラウザ内で完結" : "設定済み",
     "未設定",
   );
+  const configureAudioButton = document.querySelector("[data-configure-audio]");
+  configureAudioButton.hidden = driverlessAudio;
   document.querySelector("[data-configure-audio]").disabled =
     !setupStatus?.audio?.devicesReady || setupBusy;
   const routing = setupStatus?.audio?.routing;
