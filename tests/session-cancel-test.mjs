@@ -4,9 +4,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
-const { spawn } = macosPlatformAdapter.process;
+const platform = getPlatformAdapter();
+const { spawn } = platform.process;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryDir = mkdtempSync(resolve(tmpdir(), "meeting-copilot-cancel-test-"));
@@ -81,7 +82,7 @@ host.kill();
 await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
 let launchStillRunning = true;
 try {
-  if (!macosPlatformAdapter.process.exists(launch.pid)) throw new Error("Launch process exited early");
+  if (!platform.process.exists(launch.pid)) throw new Error("Launch process exited early");
 } catch {
   launchStillRunning = false;
 }
@@ -97,7 +98,7 @@ try {
   }
 } finally {
   try {
-    macosPlatformAdapter.process.terminateTree(launch.pid, "SIGKILL");
+    platform.process.terminateTree(launch.pid, "SIGKILL");
   } catch {}
   rmSync(temporaryDir, { recursive: true, force: true });
 }

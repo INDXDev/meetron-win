@@ -4,9 +4,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
-const { spawn } = macosPlatformAdapter.process;
+const platform = getPlatformAdapter();
+const { spawn } = platform.process;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryDir = mkdtempSync(resolve(tmpdir(), "meeting-copilot-native-test-"));

@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 
+import { requireChrome } from "./chrome-fixture.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connectToChromeOverCDP } from "../scripts/playwright-cdp.mjs";
-import { macosPlatformAdapter } from "../src/platform/macos/macos-platform-adapter.mjs";
+import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
-const { run: execFileAsync, spawn } = macosPlatformAdapter.process;
+const platform = getPlatformAdapter();
+const { run: execFileAsync, spawn } = platform.process;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const executablePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const executablePath = requireChrome("Unified profile test");
 const profileDir = await mkdtemp(resolve(tmpdir(), "meeting-copilot-unified-profile-"));
 
 const port = await new Promise((resolvePort, reject) => {

@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
+import { requireChrome } from "./chrome-fixture.mjs";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const executablePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const executablePath = requireChrome("Extension UI test");
 const browser = await chromium.launch({ executablePath, headless: true });
 const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
 
