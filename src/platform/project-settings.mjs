@@ -55,10 +55,11 @@ export async function loadProjectUrl({
       const store = credentialStore || getCredentialStore(platformId, { repoRoot });
       const saved = await store.get(PROJECT_URL_CREDENTIAL);
       if (saved) return saved;
-    } catch (error) {
-      const legacy = fromEnvironmentFile(envPath);
-      if (legacy) return legacy;
-      throw error;
+    } catch {
+      // Reading runs on the session.status.get path, so a Credential Manager failure
+      // has to degrade to "not configured" instead of taking the whole status
+      // response down. saveProjectUrl still fails loudly, so a write is never lost.
+      return fromEnvironmentFile(envPath);
     }
   }
   if (env[PROJECT_SETTING]) return env[PROJECT_SETTING];

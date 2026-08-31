@@ -77,6 +77,39 @@ try {
     ),
     "KEEP=1\n",
   );
+
+  // A Credential Manager failure must degrade the status path to "not configured"
+  // instead of taking session.status.get down, while a write must still fail loudly.
+  const unavailable = () => {
+    throw new Error("Credential Manager is unavailable");
+  };
+  const failingStore = { get: unavailable, set: unavailable, delete: unavailable };
+  assert.equal(await loadProjectUrl({
+    platformId: "win32",
+    repoRoot: temporary,
+    env: {},
+    envPath,
+    credentialStore: failingStore,
+  }), "");
+  const legacyPath = resolve(temporary, "legacy.env");
+  writeFileSync(
+    legacyPath,
+    "MEETING_COPILOT_CHATGPT_PROJECT_URL='https://chatgpt.com/g/g-p-legacy/project'\n",
+  );
+  assert.equal(await loadProjectUrl({
+    platformId: "win32",
+    repoRoot: temporary,
+    env: {},
+    envPath: legacyPath,
+    credentialStore: failingStore,
+  }), "https://chatgpt.com/g/g-p-legacy/project");
+  await assert.rejects(saveProjectUrl({
+    value: "https://chatgpt.com/g/g-p-vault/project",
+    platformId: "win32",
+    repoRoot: temporary,
+    envPath: legacyPath,
+    credentialStore: failingStore,
+  }));
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }

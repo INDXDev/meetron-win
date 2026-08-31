@@ -81,18 +81,67 @@ internal sealed class MeetronClient
         }
         catch (OperationCanceledException)
         {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException($"Meetron command timed out after {timeoutSeconds} seconds");
+            // Only the bridge itself is stopped. `entireProcessTree` would also reach
+            // the Native Host and the detached meeting launch job below it, so a join
+            // that merely outran the timeout would be killed halfway and leave
+            // meeting-launch.json claiming a dead process — or audio routing restored
+            // only in part. The work keeps running and the next status poll reports it.
+            try { if (!process.HasExited) process.Kill(); } catch { }
+            await DrainAsync(stdoutTask, stderrTask);
+            throw new TimeoutException(
+                $"Meetron command timed out after {timeoutSeconds} seconds. " +
+                "It may still be finishing in the background — check the status before retrying.");
         }
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr)
-                ? $"Meetron command stopped ({process.ExitCode})"
-                : stderr.Trim());
+            throw new InvalidOperationException(DescribeFailure(stdout, stderr, process.ExitCode));
         }
         return stdout.Trim();
+    }
+
+    // The readers own the redirected pipes, so they have to finish before `using var
+    // process` disposes those pipes underneath them. Killing the bridge closes both
+    // pipes, so the wait normally returns at once; the bound only covers a handle an
+    // unexpected grandchild kept open.
+    private static async Task DrainAsync(Task<string> stdoutTask, Task<string> stderrTask)
+    {
+        var readers = Task.WhenAll(stdoutTask, stderrTask);
+        // Observed here as well so a reader that fails after the bound still cannot
+        // surface as an unobserved task exception.
+        _ = readers.ContinueWith(static task => { _ = task.Exception; }, TaskScheduler.Default);
+        try
+        {
+            await readers.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch
+        {
+            // The timeout is already being reported; a broken pipe adds nothing.
+        }
+    }
+
+    // The bridge reports a rejected command as exit code 1 with the protocol error on
+    // stdout, so the structured message has to be preferred over the exit code.
+    private static string DescribeFailure(string stdout, string stderr, int exitCode)
+    {
+        var payload = stdout.Trim();
+        if (payload.StartsWith('{'))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(payload);
+                var message = document.RootElement.GetStringOrDefault("error", "");
+                if (!string.IsNullOrWhiteSpace(message)) return message;
+            }
+            catch (JsonException)
+            {
+                // Fall through to the transport level description below.
+            }
+        }
+        return string.IsNullOrWhiteSpace(stderr)
+            ? $"Meetron command stopped ({exitCode})"
+            : stderr.Trim();
     }
 
     private static string FindRepoRoot()
