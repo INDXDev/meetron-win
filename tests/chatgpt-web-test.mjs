@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { requireChrome } from "./chrome-fixture.mjs";
 import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
 import {
@@ -7,7 +8,7 @@ import {
   sendMeetingScreenshotToChatgpt,
 } from "../src/chatgpt/chatgpt-web.mjs";
 
-const executablePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const executablePath = requireChrome("ChatGPT web test");
 const browser = await chromium.launch({ executablePath, headless: true });
 try {
   const context = await browser.newContext({ viewport: { width: 640, height: 480 } });

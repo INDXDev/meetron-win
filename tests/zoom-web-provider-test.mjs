@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { requireChrome } from "./chrome-fixture.mjs";
 import { chromium } from "playwright-core";
 import {
   findZoomPage,
@@ -10,7 +11,7 @@ import {
   zoomAudioOptionSelector,
 } from "../src/providers/zoom-web/zoom-web-provider.mjs";
 
-const executablePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const executablePath = requireChrome("Zoom web provider test");
 const browser = await chromium.launch({ executablePath, headless: true });
 const context = await browser.newContext();
 

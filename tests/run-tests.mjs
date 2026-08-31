@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
+import { findChromeExecutable } from "./chrome-fixture.mjs";
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const portable = [
@@ -23,12 +23,10 @@ const portable = [
   "cli-test.mjs",
   "updater-test.mjs",
   "windows-package-test.mjs",
-];
-const macOnly = [
-  "dco-test.mjs",
   "native-host-test.mjs",
   "session-cancel-test.mjs",
 ];
+const macOnly = ["dco-test.mjs"];
 const windowsOnly = ["windows-platform-test.mjs"];
 const browser = [
   "extension-ui-test.mjs",
@@ -43,9 +41,10 @@ const browser = [
 const tests = [...portable];
 if (process.platform === "darwin") tests.push(...macOnly);
 if (process.platform === "win32") tests.push(...windowsOnly);
-if (process.platform === "darwin" &&
-    process.env.MEETING_COPILOT_SKIP_BROWSER_TEST !== "1" &&
-    existsSync("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")) {
+// The browser suite used to be locked to darwin by a hard-coded Chrome path,
+// which left the Windows port with no browser coverage. Gate it on whether
+// Chrome is actually present instead of on which platform this is.
+if (process.env.MEETING_COPILOT_SKIP_BROWSER_TEST !== "1" && findChromeExecutable()) {
   tests.push(...browser);
 }
 let failures = 0;
