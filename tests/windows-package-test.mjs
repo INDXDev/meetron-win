@@ -93,8 +93,12 @@ try {
   assert.match(verifyScript, /Status\.ToString\(\)/);
   assert.match(verifyScript, /MEETRON_SIGNATURE_RESULT/);
   assert.match(verifyScript, /Set-Content.*-Encoding utf8/);
+  // PowerShell 7 is what CI runs; Windows PowerShell is the fallback for an
+  // unprepared machine, so both must stay reachable.
+  assert.match(verifyScript, /PowerShell\/7\/pwsh\.exe/);
   assert.match(verifyScript, /WindowsPowerShell\/v1\.0\/powershell\.exe/);
-  assert.doesNotMatch(verifyScript, /pwsh\.exe/);
+  assert.match(verifyScript, /\$ErrorActionPreference = 'Stop'/);
+  assert.match(verifyScript, /Authenticode signer inventory produced no result/);
   assert.match(verifyScript, /LOCAL-TEST Authenticode integrity is invalid/);
   assert.match(verifyScript, /verifyTestSignatures/);
   assert.match(verifyScript, /offset \+= 24/);

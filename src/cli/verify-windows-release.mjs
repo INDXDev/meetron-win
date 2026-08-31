@@ -128,27 +128,43 @@ function assertPackageContracts(root, { release }) {
   }
 }
 
+// PowerShell 7 carries the modules this inventory was written against and is
+// what CI runs; it is absent on an unprepared Windows machine, where Windows
+// PowerShell -- which ships with every install -- is the fallback.
+function resolvePowerShell() {
+  for (const root of [process.env.ProgramW6432, process.env.ProgramFiles, "C:\\Program Files"]) {
+    if (!root) continue;
+    const candidate = resolve(root, "PowerShell/7/pwsh.exe");
+    if (existsSync(candidate)) return candidate;
+  }
+  return resolve(process.env.SystemRoot || process.env.WINDIR || "C:\\Windows", "System32/WindowsPowerShell/v1.0/powershell.exe");
+}
+
 async function signatureSubjects(paths) {
   const inputRoot = mkdtempSync(resolve(tmpdir(), "meetron-signatures-"));
   const inputPath = resolve(inputRoot, "paths.json");
   const resultPath = resolve(inputRoot, "results.json");
   writeFileSync(inputPath, JSON.stringify(paths), "utf8");
   const command = [
+    "$ErrorActionPreference = 'Stop'",
     "$paths = Get-Content -Raw -LiteralPath $env:MEETRON_SIGNATURE_PATHS | ConvertFrom-Json",
     "$subjects = foreach ($path in $paths) { $signature = Get-AuthenticodeSignature -LiteralPath $path; $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($path)); [pscustomobject]@{ Path = [string]$path; Subject = [string]$certificate.Subject; Status = $signature.Status.ToString(); StatusMessage = [string]($signature.StatusMessage) } }",
     "$subjects | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:MEETRON_SIGNATURE_RESULT -Encoding utf8",
   ].join("; ");
-  // Windows PowerShell ships with every Windows 11 install; PowerShell 7 does
-  // not, and package verification must work on an unprepared user machine.
-  const powershell = resolve(process.env.SystemRoot || process.env.WINDIR || "C:\\Windows", "System32/WindowsPowerShell/v1.0/powershell.exe");
   try {
-    await run(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
+    const { stdout, stderr } = await run(resolvePowerShell(), ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
       env: powershellEnvironment({
         MEETRON_SIGNATURE_PATHS: inputPath,
         MEETRON_SIGNATURE_RESULT: resultPath,
       }),
       timeout: 120_000,
     });
+    if (!existsSync(resultPath)) {
+      // PowerShell reports some inventory failures without a non-zero exit
+      // code, which surfaced only as an ENOENT for the missing result file.
+      const detail = [stderr, stdout].map((part) => (part || "").trim()).find(Boolean);
+      throw cliError(`[ERROR] Authenticode signer inventory produced no result${detail ? `: ${detail}` : "."}`, 1);
+    }
     const parsed = JSON.parse(readFileSync(resultPath, "utf8").replace(/^\uFEFF/, ""));
     return Array.isArray(parsed) ? parsed : [parsed];
   } finally {
