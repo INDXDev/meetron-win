@@ -1,7 +1,11 @@
 import { MeetronError } from "../core/errors.mjs";
 import { macosPlatformAdapter } from "./macos/macos-platform-adapter.mjs";
+import { windowsPlatformAdapter } from "./windows/windows-platform-adapter.mjs";
 
-const adapters = new Map([[macosPlatformAdapter.id, macosPlatformAdapter]]);
+const adapters = new Map([
+  [macosPlatformAdapter.id, macosPlatformAdapter],
+  [windowsPlatformAdapter.id, windowsPlatformAdapter],
+]);
 
 export function getPlatformAdapter(platformId = process.env.MEETRON_PLATFORM || process.platform) {
   const adapter = adapters.get(platformId);

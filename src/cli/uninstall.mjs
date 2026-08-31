@@ -51,18 +51,39 @@ runMain(async () => {
   if ((removeData || removeAudioDriver) && !confirmed) {
     throw cliError("--remove-data and --remove-audio-driver require --yes.");
   }
+  if (removeAudioDriver && platform.id === "win32") {
+    throw cliError(
+      "Meetron does not own the third-party VB-CABLE driver. Remove it only with VB-Audio's own uninstaller.",
+      1,
+    );
+  }
   const home = process.env.HOME || homedir();
   const paths = platform.paths.resolve({ repoRoot, home, env: process.env });
   const runtimeDir = process.env.MEETING_COPILOT_RUNTIME_DIR || paths.runtimeDir;
   const profileRoot = resolve(home, "Library/Application Support/MeetingCopilot");
   if (removeData) {
-    if (canonical(runtimeDir) !== canonical(resolve(repoRoot, ".meeting-copilot-runtime"))) {
+    const defaultPaths = platform.paths.resolve({
+      repoRoot,
+      home,
+      env: Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+        !["MEETING_COPILOT_RUNTIME_DIR", "MEETING_COPILOT_PROFILE_DIR"].includes(name))),
+    });
+    const expectedRuntime = platform.id === "win32"
+      ? defaultPaths.runtimeDir
+      : resolve(repoRoot, ".meeting-copilot-runtime");
+    if (canonical(runtimeDir) !== canonical(expectedRuntime)) {
       throw cliError(`Refusing to remove unexpected runtime path: ${runtimeDir}`, 1);
     }
-    if (!isChild(profileRoot, paths.dedicatedProfileDir)) {
+    const dedicatedProfileIsSafe = platform.id === "win32"
+      ? canonical(paths.dedicatedProfileDir) === canonical(defaultPaths.dedicatedProfileDir)
+      : isChild(profileRoot, paths.dedicatedProfileDir);
+    if (!dedicatedProfileIsSafe) {
       throw cliError(`Refusing to remove a Chrome profile outside Meetron data: ${paths.dedicatedProfileDir}`, 1);
     }
-    if (canonical(paths.legacyProfileDir) !== canonical(resolve(profileRoot, "ChatGPTVoiceChrome"))) {
+    const expectedLegacyProfile = platform.id === "win32"
+      ? defaultPaths.legacyProfileDir
+      : resolve(profileRoot, "ChatGPTVoiceChrome");
+    if (canonical(paths.legacyProfileDir) !== canonical(expectedLegacyProfile)) {
       throw cliError(`Refusing to remove unexpected legacy profile path: ${paths.legacyProfileDir}`, 1);
     }
   }

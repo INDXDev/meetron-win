@@ -2,15 +2,15 @@
 
 [![CI](https://github.com/bb8ad8/meetron/actions/workflows/ci.yml/badge.svg)](https://github.com/bb8ad8/meetron/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#動作環境)
+[![Platform: macOS / Windows](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](#動作環境)
 
-ChatGPT Web Voiceを、Google Meetまたは任意のZoom Web Appへ`GPT-Live`という別参加者として接続するmacOS向けの実験的ベータ版です。OpenAI APIは使わず、Meetron専用の仮想音声デバイスで会議音声とChatGPT音声を双方向に橋渡しします。既定はGoogle Meetで、Zoom対応はベータ機能です。
+ChatGPT Web Voiceを、Google Meetまたは任意のZoom Web Appへ`GPT-Live`という別参加者として接続するmacOS / Windows向けの実験的ベータ版です。OpenAI APIは使わず、仮想音声デバイスで会議音声とChatGPT音声を双方向に橋渡しします。既定はGoogle Meetで、Zoom対応はベータ機能です。
 
 このプロジェクトは非公式であり、OpenAI、Apple、Google、Zoomの提供・承認を受けた製品ではありません。ChatGPT、Google Meet、Zoomの画面変更により、自動化が動かなくなる可能性があります。
 
 ## OSS Community版について
 
-このリポジトリは、構成を理解して自力またはローカル操作対応のAIアシスタントで導入・診断できる利用者向けの、source-firstなCommunity版です。Git、Node.js、Chromeのデベロッパーモード、macOSの署名・権限を扱います。一般消費者向けの公証済みデスクトップアプリ、自動アップデート、Chrome Web Store版、Windows版、組織管理、SLAは現在のOSSリリースには含まれません。
+このリポジトリは、構成を理解して自力またはローカル操作対応のAIアシスタントで導入・診断できる利用者向けの、source-firstなCommunity版です。Git、Node.js、Chromeのデベロッパーモード、OS固有の権限を扱います。一般消費者向けの署名済みデスクトップアプリ、自動アップデート、Chrome Web Store版、組織管理、SLAは現在のOSSリリースには含まれません。Windows対応は手動セットアップのPhase 1ベータです。
 
 対応範囲とIssueを開く前の確認は[SUPPORT.md](SUPPORT.md)、変更点は[CHANGELOG.md](CHANGELOG.md)を参照してください。
 
@@ -46,12 +46,39 @@ AirDropやブラウザから取得したソースでは、未署名の`.command`
 ## 動作環境
 
 - macOS 13以降（実機はmacOS 26 / Apple Siliconで確認）
+- Windows 11（Phase 1ベータ。Google Meetを対象とし、Zoom Webは個別検証が必要）
 - Google Chrome公式ビルド
 - Node.js 22または24 LTS
 - ChatGPT Web Voiceを利用できるアカウント
 - Google Meetへ参加できるGoogleアカウント
 
 Intel MacとmacOS 13〜15では未検証のベストエフォート対応です。音声PKGはApple Silicon / IntelのUniversal Binaryとしてビルドします。Chrome Web Store版はなく、GitHubから取得した拡張をデベロッパーモードで読み込みます。
+
+## Windows 11 Phase 1ベータ
+
+Windows版は、ネイティブUI、インストーラ、自動更新、コード署名をまだ含まないsource-firstの手動ベータです。音声にはVB-AudioのVB-CABLE A+B（2本の独立した仮想ケーブル）が必要です。MeetronはVB-CABLEを同梱・再配布しません。導入前に提供元のライセンスを確認してください。
+
+Rust stable、Node.js 22または24、Google Chrome、VB-CABLE A+Bを用意し、PowerShellでリポジトリ直下から実行します。
+
+```powershell
+npm ci
+npm run build:windows
+$env:MEETING_COPILOT_AUDIO_BACKEND = "vb-cable"
+node src/cli/check-env.mjs
+node src/cli/install-control-ui.mjs
+node src/cli/open-control-ui-setup.mjs
+```
+
+Native Messaging Hostは`HKCU\Software\Google\Chrome\NativeMessagingHosts\com.meeting_copilot.host`へユーザー単位で登録されます。設定ファイルとランタイム状態には現在のユーザーだけを許可するACLを設定します。`meetron-host.exe`はWindows Job ObjectにNodeと子プロセスを収容し、ホスト停止時に専用Chromeを含む子孫を残しません。
+
+VB-CABLE A+Bは次の4エンドポイントを使います。
+
+- 会議のspeaker: `CABLE-A Input (VB-Audio Cable A)`
+- ChatGPTのinput: `CABLE-A Output (VB-Audio Cable A)`
+- ChatGPTのoutput: `CABLE-B Input (VB-Audio Cable B)`
+- 会議のmicrophone: `CABLE-B Output (VB-Audio Cable B)`
+
+Google Meetでは、機密情報を含まないテスト会議で参加、双方向音声、画面送信、セッション終了後のChromeプロセス消去を確認してください。Zoom WebはGoogle Meetと同一の結果を仮定せず、別に検証してください。WindowsのネイティブシェルはPhase 2、ドライバ不要の音声経路はPhase 3、署名済みパッケージはPhase 4の範囲です。
 
 ## Meetron Setup.commandが行うこと
 

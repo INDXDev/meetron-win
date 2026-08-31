@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, release } from "node:os";
 import { getAudioStatus } from "../../scripts/audio-backend.mjs";
 import { cliError, platform, platformPaths, repoRoot, run, runMain } from "./cli-utils.mjs";
 import { findChrome } from "./chrome-session.mjs";
 
 const usage = `Usage: node src/cli/check-env.mjs
 
-Checks macOS, Chrome, the native audio controller, and the selected virtual
-audio backend. Meetron Audio is preferred; BlackHole remains a migration fallback.
+Checks the operating system, Chrome, the native audio controller, and the
+selected virtual audio backend.
 `;
 
 runMain(async () => {
@@ -30,7 +30,12 @@ runMain(async () => {
     if (Number(version.split(".")[0]) >= 13) ok(`macOS ${version} (${architecture})`);
     else absent(`macOS 13 or later is required (found ${version}).`);
     if (architecture === "x86_64") info("Intel Mac support is best effort; the distributed audio package is Universal.");
-  } else absent("macOS is required.");
+  } else if (platform.id === "win32") {
+    const version = release();
+    const build = Number(version.split(".")[2]);
+    if (Number.isInteger(build) && build >= 22_000) ok(`Windows 11 ${version} (${process.arch})`);
+    else absent(`Windows 11 is required for the Windows beta (found ${version}).`);
+  }
   const nodeMajor = Number(process.versions.node.split(".")[0]);
   let npmVersion = "not found";
   try { npmVersion = (await run("npm", ["--version"])).stdout.trim(); } catch {}
@@ -39,8 +44,8 @@ runMain(async () => {
   const controller = platform.audioControl
     .executableCandidates({ repoRoot, env: process.env })
     .find((candidate) => candidate && existsSync(candidate));
-  if (controller) ok(`Native Core Audio controller: ${controller}`);
-  else absent("Native Core Audio controller has not been built.");
+  if (controller) ok(`Native audio controller: ${controller}`);
+  else absent(`Native ${platform.label} audio controller has not been built.`);
   const chrome = findChrome({
     home: process.env.HOME || homedir(),
     env: process.env,
@@ -52,7 +57,7 @@ runMain(async () => {
   const audio = await getAudioStatus();
   for (const name of audio.devices || []) process.stdout.write(`  - ${name}\n`);
   if (audio.devicesReady) ok(`Audio backend: ${audio.backendLabel}`);
-  else absent("The two Meetron virtual audio devices were not found.");
+  else absent("The required Meetron virtual audio endpoints were not found.");
   if (audio.input) info(`Default input: ${audio.input}`);
   if (audio.output) info(`Default output: ${audio.output}`);
   process.stdout.write("\nSummary\n-------\n");

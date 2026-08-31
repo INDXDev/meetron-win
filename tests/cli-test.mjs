@@ -24,6 +24,9 @@ function node(modulePath, args = [], env = {}) {
 
 try {
   assert.deepEqual(readdirSync(resolve(repoRoot, "scripts")).filter((name) => name.endsWith(".sh")), []);
+  const audioPackager = readFileSync(resolve(repoRoot, "native/audio-driver/package-driver.sh"), "utf8");
+  assert.match(audioPackager, /node "\$repo_root\/src\/cli\/build-audio-control\.mjs"/);
+  assert.doesNotMatch(audioPackager, /scripts\/build-audio-control\.sh/);
   const cliFiles = readdirSync(resolve(repoRoot, "src/cli")).filter((name) => name.endsWith(".mjs"));
   // Shared modules have no command line, and these two entry points act on the
   // real machine (Swift build, Native Host registration, Chrome launch) without

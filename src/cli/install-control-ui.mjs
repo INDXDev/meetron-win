@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import {
-  chmodSync,
   existsSync,
   readFileSync,
   renameSync,
@@ -9,6 +8,7 @@ import {
 } from "node:fs";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   cliError,
   platform,
@@ -78,7 +78,11 @@ runMain(async () => {
   // The launcher must keep an .mjs extension: it is an ESM module, and an
   // extension-less entry point is only recognised as one through Node's syntax
   // detection, which is not enabled on every supported Node 22 build.
-  const hostPath = resolve(platformPaths.runtimeDir, "native-host.mjs");
+  const nativeHostScript = fileURLToPath(new URL("../../scripts/native-host.mjs", import.meta.url));
+  const hostPath = platform.nativeHost.launcherPath({
+    repoRoot,
+    runtimeDir: platformPaths.runtimeDir,
+  });
   const manifest = `${JSON.stringify({
     name: "com.meeting_copilot.host",
     description: "Meetron local control host",
@@ -92,9 +96,12 @@ runMain(async () => {
     return;
   }
   platform.fsSecurity.secureDir(platformPaths.runtimeDir);
-  const launcher = `#!${process.execPath}\nimport ${JSON.stringify(new URL("../../scripts/native-host.mjs", import.meta.url).href)};\n`;
-  writeFileSync(hostPath, launcher, { mode: 0o700 });
-  chmodSync(hostPath, 0o700);
+  platform.nativeHost.installLauncher({
+    repoRoot,
+    runtimeDir: platformPaths.runtimeDir,
+    nodePath: process.execPath,
+    scriptPath: nativeHostScript,
+  });
   const envPath = resolve(repoRoot, ".meeting-copilot.env");
   let text = existsSync(envPath) ? readFileSync(envPath, "utf8") : "";
   text = updateSetting(text, "MEETING_COPILOT_NODE_PATH", process.execPath);

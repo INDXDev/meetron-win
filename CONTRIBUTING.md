@@ -4,7 +4,7 @@ Contributions are welcome. This project automates frequently changing consumer w
 
 ## Development
 
-Requirements for standard JavaScript, shell, extension, and browser work are macOS 13 or later, Google Chrome, Node.js 22 or 24 LTS, and npm. Xcode Command Line Tools are required only when changing or locally building the native audio components.
+Requirements for standard JavaScript, extension, and browser work are macOS 13 or later or Windows 11, Google Chrome, Node.js 22 or 24 LTS, and npm. Xcode Command Line Tools are required only when changing or locally building the macOS audio components. Windows native changes require the stable Rust toolchain.
 
 ```bash
 npm ci
@@ -16,6 +16,14 @@ Native audio source changes additionally require:
 ```bash
 npm run test:native
 npm run build:audio
+```
+
+Windows adapter or native-helper changes additionally require:
+
+```bash
+npm run build:windows
+npm run test:windows
+npm test
 ```
 
 Release package changes additionally require a development build with `npm run package:audio` followed by `npm run test:package`. Maintainers create the public, signed and notarized artifact with `npm run package:audio:release`; it is isolated under `dist/release/` and must pass the notarized package test before upload. The packaged `meetron-audioctl` is written in Swift, but no Swift toolchain is required to install or run the distributed PKG.
@@ -32,9 +40,9 @@ Meetron separates stable orchestration from provider-specific browser automation
 - `src/browser/` owns provider-neutral Playwright helpers and dedicated Chrome page handling.
 - `src/audio/` owns provider-neutral backend and meeting-device contracts.
 - `src/platform/` owns platform, credential-store, installer, and OS-specific path or shortcut contracts.
-  The current Community implementation registers only the macOS adapter;
-  unsupported platforms must return `PLATFORM_UNSUPPORTED` instead of silently
-  falling back to macOS paths.
+  The Community implementation registers macOS and Windows adapters; unsupported
+  platforms must return `PLATFORM_UNSUPPORTED` instead of silently falling back
+  to another platform's paths.
 - `src/providers/<provider>/` owns URL validation, selectors, status detection, microphone control, leaving, and provider capabilities.
 - `src/providers/provider-registry.mjs` is the only runtime lookup point for a meeting provider.
 - `scripts/prepare-*.mjs` own pre-join flows because provider DOMs and media initialization differ substantially. They must return the common `connection`, `microphone`, and `camera` fields from `createPreparationResult()`.

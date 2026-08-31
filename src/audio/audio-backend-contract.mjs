@@ -35,10 +35,25 @@ export function defineAudioBackend(definition) {
       `Audio backend ${definition.id} requires a label`,
     );
   }
+  const meetingToAI = assertDeviceTarget(definition.meetingToAI, "meetingToAI", definition.id);
+  const aiToMeeting = assertDeviceTarget(definition.aiToMeeting, "aiToMeeting", definition.id);
+  const defaultRouting = {
+    chatgptInput: meetingToAI,
+    chatgptOutput: aiToMeeting,
+    meetingMicrophone: aiToMeeting,
+    meetingSpeaker: meetingToAI,
+  };
+  const routing = definition.routing
+    ? Object.fromEntries(Object.keys(defaultRouting).map((field) => [
+      field,
+      assertDeviceTarget(definition.routing[field], `routing.${field}`, definition.id),
+    ]))
+    : defaultRouting;
   return Object.freeze({
     id: definition.id,
     label: definition.label,
-    meetingToAI: assertDeviceTarget(definition.meetingToAI, "meetingToAI", definition.id),
-    aiToMeeting: assertDeviceTarget(definition.aiToMeeting, "aiToMeeting", definition.id),
+    meetingToAI,
+    aiToMeeting,
+    routing: Object.freeze(routing),
   });
 }

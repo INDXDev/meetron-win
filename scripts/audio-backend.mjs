@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { defineAudioBackend } from "../src/audio/audio-backend-contract.mjs";
 import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
@@ -45,6 +46,18 @@ export function createAudioBackends({ labelPrefix = "Meetron: " } = {}) {
       meetingToAI: { name: "BlackHole 2ch", uid: "BlackHole2ch_UID" },
       aiToMeeting: { name: "BlackHole 16ch", uid: "BlackHole16ch_UID" },
     }),
+    vbCable: defineAudioBackend({
+      id: "vb-cable",
+      label: "VB-CABLE A+B",
+      meetingToAI: { name: "CABLE-A Output (VB-Audio Cable A)" },
+      aiToMeeting: { name: "CABLE-B Output (VB-Audio Cable B)" },
+      routing: {
+        chatgptInput: { name: "CABLE-A Output (VB-Audio Cable A)" },
+        chatgptOutput: { name: "CABLE-B Input (VB-Audio Cable B)" },
+        meetingMicrophone: { name: "CABLE-B Output (VB-Audio Cable B)" },
+        meetingSpeaker: { name: "CABLE-A Input (VB-Audio Cable A)" },
+      },
+    }),
   });
 }
 
@@ -82,26 +95,33 @@ function configuredBackendPreference() {
 }
 
 export function selectAudioBackend(devices, requested = configuredBackendPreference()) {
-  if (!["auto", "custom", "legacy-custom", "blackhole"].includes(requested)) {
+  if (!["auto", "custom", "legacy-custom", "blackhole", "vb-cable"].includes(requested)) {
     throw new Error(`Unsupported audio backend: ${requested}`);
   }
-  const available = (backend) => [backend.meetingToAI, backend.aiToMeeting]
+  const available = (backend) => requiredTargets(backend)
     .every((required) => resolveDeviceTarget(devices, required));
   if (requested === "legacy-custom") return AUDIO_BACKENDS.legacyCustom;
+  if (requested === "vb-cable") return AUDIO_BACKENDS.vbCable;
   if (requested !== "auto") return AUDIO_BACKENDS[requested];
   if (available(AUDIO_BACKENDS.custom)) return AUDIO_BACKENDS.custom;
   if (available(AUDIO_BACKENDS.legacyCustom)) return AUDIO_BACKENDS.legacyCustom;
   if (available(AUDIO_BACKENDS.blackhole)) return AUDIO_BACKENDS.blackhole;
-  return AUDIO_BACKENDS.custom;
+  if (available(AUDIO_BACKENDS.vbCable)) return AUDIO_BACKENDS.vbCable;
+  return platform.id === "win32" ? AUDIO_BACKENDS.vbCable : AUDIO_BACKENDS.custom;
 }
 
 export function routingForBackend(backend) {
-  return {
-    chatgptInput: backend.meetingToAI,
-    chatgptOutput: backend.aiToMeeting,
-    meetingMicrophone: backend.aiToMeeting,
-    meetingSpeaker: backend.meetingToAI,
-  };
+  return backend.routing;
+}
+
+function requiredTargets(backend) {
+  const seen = new Set();
+  return Object.values(routingForBackend(backend)).filter((target) => {
+    const key = `${target.uid}\0${target.name}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function audioControlExecutable() {
@@ -118,7 +138,11 @@ async function systemStatus() {
   const audioctl = audioControlExecutable();
   if (audioctl) {
     const { stdout } = await platform.process.run(audioctl, ["status"], { timeout: 10_000 });
-    return { ...JSON.parse(stdout), controller: "coreaudio", executable: audioctl };
+    return {
+      ...JSON.parse(stdout),
+      controller: platform.audioControl.controller || "coreaudio",
+      executable: audioctl,
+    };
   }
   const switchAudioSource = switchAudioSourceExecutable();
   if (!switchAudioSource) {
@@ -164,7 +188,7 @@ export async function getAudioStatus() {
     const system = await systemStatus();
     const backend = selectAudioBackend(system.devices);
     const routing = routingForBackend(backend);
-    const required = [backend.meetingToAI, backend.aiToMeeting];
+    const required = requiredTargets(backend);
     const devicesReady = required.every((target) => hasDevice(system.devices, target));
     return {
       ready: devicesReady,
@@ -183,44 +207,47 @@ export async function getAudioStatus() {
       routing,
       systemDefaultsUnchanged: true,
       inputMatchesLegacyRoute: isDevice(system.input, routing.chatgptInput),
-      audioControlInstalled: system.controller === "coreaudio",
+      audioControlInstalled: ["coreaudio", "mmdevice"].includes(system.controller),
       switchAudioSourceInstalled: system.controller === "switchaudio-osx",
     };
   } catch (error) {
-    const required = [AUDIO_BACKENDS.custom.meetingToAI, AUDIO_BACKENDS.custom.aiToMeeting];
+    const fallback = platform.id === "win32" ? AUDIO_BACKENDS.vbCable : AUDIO_BACKENDS.custom;
+    const required = requiredTargets(fallback);
     return {
       ready: false,
       devicesReady: false,
       controller: "error",
-      backend: "custom",
-      backendLabel: AUDIO_BACKENDS.custom.label,
+      backend: fallback.id,
+      backendLabel: fallback.label,
       input: "",
       output: "",
       devices: [],
       requiredDevices: Object.fromEntries(required.map((target) => [target.name, false])),
       requiredDeviceNames: required.map((target) => target.name),
-      routing: routingForBackend(AUDIO_BACKENDS.custom),
+      routing: routingForBackend(fallback),
       error: error.message,
     };
   }
 }
 
 async function setDefault(kind, target, system) {
-  if (system.controller === "coreaudio") {
+  if (["coreaudio", "mmdevice"].includes(system.controller)) {
     const resolvedTarget = resolveDeviceTarget(system.devices, target);
     if (!resolvedTarget?.uid) throw new Error(`Audio device UID was not found: ${target.name}`);
     await platform.process.run(system.executable, [`set-default-${kind}`, "--uid", resolvedTarget.uid], { timeout: 10_000 });
   } else if (system.controller === "switchaudio-osx") {
     await platform.process.run(system.executable, ["-t", kind, "-s", target.name], { timeout: 10_000 });
   } else {
-    throw new Error("No supported macOS audio controller is available. Build the audio control helper first.");
+    throw new Error("No supported audio controller is available. Build the platform audio control helper first.");
   }
 }
 
 function runtimeStatePath() {
-  const runtimeDir = resolve(
-    process.env.MEETING_COPILOT_RUNTIME_DIR || resolve(repoRoot, ".meeting-copilot-runtime"),
-  );
+  const runtimeDir = platform.paths.resolve({
+    repoRoot,
+    home: process.env.HOME || homedir(),
+    env: process.env,
+  }).runtimeDir;
   return { runtimeDir, statePath: resolve(runtimeDir, "audio-original.json") };
 }
 
@@ -233,7 +260,7 @@ export async function configureAudio({ dryRun = false } = {}) {
   const system = await systemStatus();
   const backend = selectAudioBackend(system.devices);
   const routing = routingForBackend(backend);
-  const required = [backend.meetingToAI, backend.aiToMeeting];
+  const required = requiredTargets(backend);
   const missing = required.filter((target) => !hasDevice(system.devices, target));
   if (missing.length) throw new Error(`Required audio device was not found: ${missing.map((item) => item.name).join(", ")}`);
   if (dryRun) {

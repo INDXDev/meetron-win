@@ -2,6 +2,7 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { assertSessionOwnership } from "../src/core/session-state.mjs";
 import { getMeetingProvider } from "../src/providers/provider-registry.mjs";
@@ -9,9 +10,11 @@ import { getPlatformAdapter } from "../src/platform/platform-registry.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const platform = getPlatformAdapter();
-const runtimeDir = resolve(
-  process.env.MEETING_COPILOT_RUNTIME_DIR || resolve(repoRoot, ".meeting-copilot-runtime"),
-);
+const runtimeDir = platform.paths.resolve({
+  repoRoot,
+  home: process.env.HOME || homedir(),
+  env: process.env,
+}).runtimeDir;
 const statePath = resolve(runtimeDir, "meeting-launch.json");
 const setupStatePath = resolve(runtimeDir, "setup.json");
 const logPath = resolve(runtimeDir, "meeting-launch.log");

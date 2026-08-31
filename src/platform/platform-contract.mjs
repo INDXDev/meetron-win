@@ -16,7 +16,7 @@ const REQUIRED_CAPABILITIES = Object.freeze({
   ],
   net: ["listenerPid"],
   fsSecurity: ["secureDir", "secureFile"],
-  nativeHost: ["installManifest", "uninstallManifest"],
+  nativeHost: ["launcherPath", "installLauncher", "installManifest", "uninstallManifest"],
   audioControl: ["executableCandidates", "fallbackExecutableCandidates"],
   shortcuts: [],
 });

@@ -21,10 +21,13 @@ const legacyCustomDevices = [
   { name: AUDIO_BACKENDS.legacyCustom.meetingToAI.name, uid: AUDIO_BACKENDS.legacyCustom.meetingToAI.uid },
   { name: AUDIO_BACKENDS.legacyCustom.aiToMeeting.name, uid: AUDIO_BACKENDS.legacyCustom.aiToMeeting.uid },
 ];
+const vbCableDevices = Object.values(AUDIO_BACKENDS.vbCable.routing);
 
 assert.equal(selectAudioBackend([...blackHoleDevices, ...customDevices], "auto").id, "custom");
 assert.equal(selectAudioBackend([...blackHoleDevices, ...legacyCustomDevices], "auto").id, "legacy-custom");
 assert.equal(selectAudioBackend(blackHoleDevices, "auto").id, "blackhole");
+assert.equal(selectAudioBackend(vbCableDevices, "auto").id, "vb-cable");
+assert.equal(selectAudioBackend([], "vb-cable").id, "vb-cable");
 assert.equal(selectAudioBackend([], "custom").id, "custom");
 assert.equal(resolveDeviceTarget(customDevices, {
   name: AUDIO_BACKENDS.custom.meetingToAI.name,
@@ -39,6 +42,12 @@ const routing = routingForBackend(AUDIO_BACKENDS.custom);
 assert.equal(routing.chatgptInput.uid, routing.meetingSpeaker.uid);
 assert.equal(routing.chatgptOutput.uid, routing.meetingMicrophone.uid);
 assert.notEqual(routing.chatgptInput.uid, routing.chatgptOutput.uid);
+
+const vbRouting = routingForBackend(AUDIO_BACKENDS.vbCable);
+assert.match(vbRouting.meetingSpeaker.name, /CABLE-A Input/);
+assert.match(vbRouting.chatgptInput.name, /CABLE-A Output/);
+assert.match(vbRouting.chatgptOutput.name, /CABLE-B Input/);
+assert.match(vbRouting.meetingMicrophone.name, /CABLE-B Output/);
 
 const branded = createAudioBackends({ labelPrefix: "Contoso Cable - " });
 assert.equal(branded.custom.meetingToAI.name, "Contoso Cable - Meeting to AI");

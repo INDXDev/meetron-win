@@ -1,0 +1,30 @@
+[package]
+name = "meetron-windows-tools"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+
+[[bin]]
+name = "meetron-host"
+path = "src/bin/meetron-host.rs"
+
+[[bin]]
+name = "meetron-audioctl"
+path = "src/bin/meetron-audioctl.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+windows-core = "0.58"
+windows = { version = "0.58", features = [
+  "Win32_Devices_FunctionDiscovery",
+  "Win32_Foundation",
+  "Win32_Media_Audio",
+  "Win32_Security",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+  "Win32_UI_Shell_PropertiesSystem",
+] }

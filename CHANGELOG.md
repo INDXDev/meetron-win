@@ -5,6 +5,13 @@ user-visible changes; implementation-only refactors stay in Git history.
 
 ## [Unreleased]
 
+### Added
+
+- Windows 11 Phase 1 beta support with a complete platform adapter, Chrome
+  Native Messaging registry registration, ACL-protected local state, Job Object
+  process cleanup, MMDevice audio discovery, and VB-CABLE A+B routing.
+- Windows-native Rust build and integration checks on `windows-latest` CI.
+
 ### Fixed
 
 - Zoom Webが`/wc/join/<会議ID>`から同一ページ内でURLを書き換える場合も、常駐操作パネルを表示してNative Host操作を許可。
